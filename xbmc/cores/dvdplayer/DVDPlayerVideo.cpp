@@ -587,7 +587,8 @@ void CDVDPlayerVideo::Process()
             EINTERLACEMETHOD mInt = g_settings.m_currentVideoSettings.m_InterlaceMethod;
             if((mInt == VS_INTERLACEMETHOD_DEINTERLACE)
             || (mInt == VS_INTERLACEMETHOD_AUTO && (picture.iFlags & DVP_FLAG_INTERLACED)
-                                                && !g_renderManager.Supports(VS_INTERLACEMETHOD_RENDER_BOB)))
+                                                && !g_renderManager.Supports(VS_INTERLACEMETHOD_RENDER_BOB)
+                                                && !g_renderManager.Supports(VS_INTERLACEMETHOD_DXVA_BOB)))
             {
               if (!sPostProcessType.empty())
                 sPostProcessType += ",";
@@ -920,7 +921,7 @@ void CDVDPlayerVideo::ProcessOverlays(DVDVideoPicture* pSource, YV12Image* pDest
   }
 #ifdef HAS_DX
   else if(pSource->format == DVDVideoPicture::FMT_DXVA)
-    g_renderManager.AddProcessor(pSource->proc, pSource->proc_id);
+    g_renderManager.AddProcessor(pSource->proc, pSource->proc_id, pSource->iFlags);
 #endif
 #ifdef HAVE_LIBVDPAU
   else if(pSource->format == DVDVideoPicture::FMT_VDPAU)
