@@ -31,6 +31,9 @@
 #ifdef HAS_VIDEO_PLAYBACK
 #include "cores/VideoRenderers/RenderManager.h"
 #endif
+#ifdef HAS_DX
+#include "DVDCodecs/Video/DXVA.h"
+#endif
 
 enum CodecID;
 class CDemuxStreamVideo;
@@ -121,6 +124,10 @@ protected:
   void ProcessOverlays(DVDVideoPicture* pSource, YV12Image* pDest, double pts);
 #endif
   void ProcessVideoUserData(DVDVideoUserData* pVideoUserData, double pts);
+
+#ifdef HAS_DX
+  DXVA::CProcessor m_processor;
+#endif
 
   double m_iCurrentPts; // last pts displayed
   double m_iVideoDelay;

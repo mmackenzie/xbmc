@@ -174,6 +174,11 @@ double CDVDPlayerVideo::GetOutputDelay()
 
 bool CDVDPlayerVideo::OpenStream( CDVDStreamInfo &hint )
 {
+#ifdef HAS_DX
+  if (!m_processor.Create())
+	return false;
+#endif
+
   CLog::Log(LOGNOTICE, "Creating video codec with codec id: %i", hint.codec);
   CDVDVideoCodec* codec = CDVDFactoryCodec::CreateVideoCodec( hint );
   if(!codec)
@@ -181,6 +186,14 @@ bool CDVDPlayerVideo::OpenStream( CDVDStreamInfo &hint )
     CLog::Log(LOGERROR, "Unsupported video codec");
     return false;
   }
+
+#ifdef HAS_DX
+  // If the processor is not opened we have a software decoder
+  if (!m_processor.IsOpened()) {
+	  if (!m_processor.Open(hint.width, hint.height) || !m_processor.CreateSurfaces())
+		  return false;
+  }
+#endif
 
   if(g_guiSettings.GetBool("videoplayer.usedisplayasclock") && g_VideoReferenceClock.ThreadHandle() == NULL)
   {
@@ -258,6 +271,10 @@ void CDVDPlayerVideo::CloseStream(bool bWaitForBuffers)
     delete m_pVideoCodec;
     m_pVideoCodec = NULL;
   }
+
+#ifdef HAS_DX
+  m_processor.Close();
+#endif
 
   if (m_pTempOverlayPicture)
   {
@@ -629,6 +646,11 @@ void CDVDPlayerVideo::Process()
               picture.iDuration *= picture.iRepeatPicture + 1;
 
 #if 1
+
+#ifdef HAS_DX
+            m_processor.ProcessPicture(&picture);
+#endif
+
             int iResult = OutputPicture(&picture, pts);
 #elif 0
             // testing NV12 rendering functions
