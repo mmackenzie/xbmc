@@ -119,6 +119,8 @@ protected:
 
   GUID                           m_device;
 
+  GUID                           m_default;
+
   IDirectXVideoProcessorService* m_service;
   IDirectXVideoProcessor*        m_process;
 
