@@ -402,6 +402,10 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
     return false;
   }
 
+  // Only one instance for hardware decoder (this fixes problems creating VC-1 decoder)
+  IHardwareDecoder* decoder = ((CDVDVideoCodecFFmpeg*)avctx->opaque)->GetHardware();
+  if (decoder != NULL) decoder->Release();
+
   CHECK(g_DXVA2CreateVideoService(g_Windowing.Get3DDevice(), IID_IDirectXVideoDecoderService, (void**)&m_service));
 
   UINT  input_count;
@@ -441,7 +445,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
 
   if(m_format.Format == D3DFMT_UNKNOWN)
   {
-    CLog::Log(LOGDEBUG, "DXVA - unable to find an input/output format combination");
+    CLog::Log(LOGWARNING, "DXVA - unable to find an input/output format combination");
     return false;
   }
 
@@ -450,7 +454,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   m_format.SampleFormat.SampleFormat = DXVA2_SampleProgressiveFrame;
   m_format.SampleFormat.VideoLighting = DXVA2_VideoLighting_dim;
 
-  if     (avctx->color_range == AVCOL_RANGE_JPEG)
+  if(avctx->color_range == AVCOL_RANGE_JPEG)
     m_format.SampleFormat.NominalRange = DXVA2_NominalRange_0_255;
   else if(avctx->color_range == AVCOL_RANGE_MPEG)
     m_format.SampleFormat.NominalRange = DXVA2_NominalRange_16_235;
@@ -538,7 +542,6 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   } 
   m_format.OutputFrameFreq = m_format.InputSampleFreq;
   m_format.UABProtectionLevel = FALSE;
-  m_format.Reserved = 0;
 
   // create decoding surfaces
   m_refs = avctx->refs;
@@ -589,6 +592,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   SCOPE(DXVA2_ConfigPictureDecode, cfg_list);
 
   DXVA2_ConfigPictureDecode config = {};
+  config.ConfigBitstreamRaw = 0;
 
   unsigned bitstream = 2; // ConfigBitstreamRaw = 2 is required for Poulsbo and handles skipping better with nVidia
   for(unsigned i = 0; i< cfg_count; i++)
@@ -610,7 +614,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
 
   if(!config.ConfigBitstreamRaw)
   {
-    CLog::Log(LOGDEBUG, "DXVA - failed to find a raw input bitstream");
+    CLog::Log(LOGWARNING, "DXVA - failed to find a raw input bitstream");
     return false;
   }
   *const_cast<DXVA2_ConfigPictureDecode*>(m_context->cfg) = config;
@@ -624,6 +628,13 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   avctx->get_buffer      = GetBufferS;
   avctx->release_buffer  = RelBufferS;
   avctx->hwaccel_context = m_context;
+
+#ifdef FF_BUG_DXVA2_ATI
+  D3DADAPTER_IDENTIFIER9 identifier = g_Windowing.GetAIdentifier();
+  if (identifier.VendorId == PCIV_ATI) {
+	  avctx->workaround_bugs |= FF_BUG_DXVA2_ATI;
+  }
+#endif
 
   return true;
 }
@@ -922,7 +933,7 @@ bool CProcessor::Open(UINT width, UINT height, D3DFORMAT format)
   m_desc.UABProtectionLevel = FALSE;
 
   m_SampleFormat = m_StreamSampleFormat = DXVA2_SampleProgressiveFrame;
-
+  
   // Reset detected processors
   m_progdevice  = GUID_NULL;
   m_bobdevice   = GUID_NULL;
@@ -1094,14 +1105,8 @@ bool CProcessor::SelectProcessor()
 
   // Synchronize sample type and render deinterlace method
   EINTERLACEMETHOD deint = m_CurrInterlaceMethod;
-  switch (deint)
+  switch (m_CurrInterlaceMethod)
   {
-    case VS_INTERLACEMETHOD_AUTO:
-      m_SampleFormat = m_StreamSampleFormat;
-      if (m_SampleFormat == DXVA2_SampleFieldInterleavedOddFirst) deint = useautobob ? VS_INTERLACEMETHOD_DXVA_BOB_INVERTED : VS_INTERLACEMETHOD_DXVA_HQ_INVERTED;
-      else if (m_SampleFormat == DXVA2_SampleFieldInterleavedEvenFirst) deint = useautobob? VS_INTERLACEMETHOD_DXVA_BOB : VS_INTERLACEMETHOD_DXVA_HQ;
-      else deint = VS_INTERLACEMETHOD_NONE;
-      break;
     case VS_INTERLACEMETHOD_NONE:
       m_SampleFormat = DXVA2_SampleProgressiveFrame;
       break;
@@ -1112,6 +1117,13 @@ bool CProcessor::SelectProcessor()
     case VS_INTERLACEMETHOD_DXVA_BOB_INVERTED:
     case VS_INTERLACEMETHOD_DXVA_HQ_INVERTED:
       m_SampleFormat = DXVA2_SampleFieldInterleavedOddFirst;
+      break;
+    case VS_INTERLACEMETHOD_AUTO:
+	default:
+      m_SampleFormat = m_StreamSampleFormat;
+      if (m_SampleFormat == DXVA2_SampleFieldInterleavedOddFirst) deint = useautobob ? VS_INTERLACEMETHOD_DXVA_BOB_INVERTED : VS_INTERLACEMETHOD_DXVA_HQ_INVERTED;
+      else if (m_SampleFormat == DXVA2_SampleFieldInterleavedEvenFirst) deint = useautobob? VS_INTERLACEMETHOD_DXVA_BOB : VS_INTERLACEMETHOD_DXVA_HQ;
+      else deint = VS_INTERLACEMETHOD_NONE;
       break;
   }
   m_desc.SampleFormat.SampleFormat = m_SampleFormat;
