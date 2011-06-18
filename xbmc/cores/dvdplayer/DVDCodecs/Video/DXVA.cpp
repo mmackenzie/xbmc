@@ -404,7 +404,10 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
 
   // Only one instance for hardware decoder (this fixes problems creating VC-1 decoder)
   IHardwareDecoder* decoder = ((CDVDVideoCodecFFmpeg*)avctx->opaque)->GetHardware();
-  if (decoder != NULL) decoder->Release();
+  if (decoder != NULL) {
+	  decoder->Release();
+	  ((CDVDVideoCodecFFmpeg*)avctx->opaque)->SetHardware(NULL);
+  }
 
   CHECK(g_DXVA2CreateVideoService(g_Windowing.Get3DDevice(), IID_IDirectXVideoDecoderService, (void**)&m_service));
 
@@ -445,7 +448,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
 
   if(m_format.Format == D3DFMT_UNKNOWN)
   {
-    CLog::Log(LOGWARNING, "DXVA - unable to find an input/output format combination");
+    CLog::Log(LOGDEBUG, "DXVA - unable to find an input/output format combination");
     return false;
   }
 
@@ -1188,12 +1191,15 @@ bool CProcessor::SelectProcessor()
 
 REFERENCE_TIME CProcessor::Add(IDirect3DSurface9* source)
 {
-  m_time += 2;
-
-  m_samples[m_index].Time = m_time;
-  m_samples[m_index].SrcSurface = source;
-
-  m_index = (m_index + 1) % m_size;
+  do {
+	  m_time += 2;
+	  
+	  m_samples[m_index].Time = m_time;
+	  m_samples[m_index].SrcSurface = source;
+	  
+	  m_index = (m_index + 1) % m_size;
+  }
+  while (m_samples[m_index].SrcSurface == NULL);  // workaround to present first frame without past or future reference frames
 
   return m_time;
 }
@@ -1291,11 +1297,11 @@ bool CProcessor::Render(const RECT &dst, IDirect3DSurface9* target, REFERENCE_TI
     if (!SelectProcessor()) return false;
   }
 
-  unsigned count = 1 + m_caps.NumBackwardRefSamples + m_caps.NumForwardRefSamples;
-
-  if (!m_process || !m_samples || (m_time <= (count * 2))) return false;
+  if (!m_process || !m_samples) return false;
 
   REFERENCE_TIME frame = time - m_caps.NumForwardRefSamples * 2;
+
+  unsigned count = 1 + m_caps.NumBackwardRefSamples + m_caps.NumForwardRefSamples;
 
   /* find the required samples */
   unsigned index = m_index;
