@@ -402,11 +402,11 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
     return false;
   }
 
-  // Only one instance for hardware decoder (this fixes problems creating VC-1 decoder)
+  // Only one instance for hardware decoder (this workarounds problems creating VC-1 decoder)
   IHardwareDecoder* decoder = ((CDVDVideoCodecFFmpeg*)avctx->opaque)->GetHardware();
   if (decoder != NULL) {
 	  decoder->Release();
-	  ((CDVDVideoCodecFFmpeg*)avctx->opaque)->SetHardware(NULL);
+	  ((CDVDVideoCodecFFmpeg*)avctx->opaque)->SetHardware(this);
   }
 
   CHECK(g_DXVA2CreateVideoService(g_Windowing.Get3DDevice(), IID_IDirectXVideoDecoderService, (void**)&m_service));
