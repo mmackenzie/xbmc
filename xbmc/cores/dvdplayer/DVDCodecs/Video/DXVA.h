@@ -97,7 +97,9 @@ public:
   bool			 IsOpened() { return m_opened; }
   unsigned       GetSize() { return m_size; }
 
-  bool           Render(const RECT& dst, IDirect3DSurface9* target, const REFERENCE_TIME time, int fieldflag);
+  void           StillFrame();
+
+  bool           Render(const RECT& dest, IDirect3DSurface9* target, const REFERENCE_TIME time, int fieldflag);
 
   bool           ProcessPicture(DVDVideoPicture* picture);
 
@@ -125,7 +127,6 @@ protected:
   IDirectXVideoProcessor*        m_process;
 
   EINTERLACEMETHOD             m_CurrInterlaceMethod;
-  unsigned                     m_SampleFormat;
   unsigned                     m_StreamSampleFormat;
   int                          m_BFF;
 

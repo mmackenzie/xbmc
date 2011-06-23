@@ -855,7 +855,6 @@ CProcessor::CProcessor()
 {
   m_service = NULL;
   m_process = NULL;
-  m_time    = 0;
   m_references = 1;
   g_Windowing.Register(this);
 
@@ -935,7 +934,7 @@ bool CProcessor::Open(UINT width, UINT height, D3DFORMAT format)
   m_desc.Format	= format;
   m_desc.UABProtectionLevel = FALSE;
 
-  m_SampleFormat = m_StreamSampleFormat = DXVA2_SampleProgressiveFrame;
+  m_StreamSampleFormat = DXVA2_SampleUnknown;
   
   // Reset detected processors
   m_progdevice  = GUID_NULL;
@@ -1072,6 +1071,8 @@ bool CProcessor::Open(UINT width, UINT height, D3DFORMAT format)
 	  m_samples[i].SrcSurface = NULL;
   }
 
+  m_time = 0;
+
   if (!SelectProcessor()) return false;
 
   m_opened = true;
@@ -1111,26 +1112,25 @@ bool CProcessor::SelectProcessor()
   switch (m_CurrInterlaceMethod)
   {
     case VS_INTERLACEMETHOD_NONE:
-      m_SampleFormat = DXVA2_SampleProgressiveFrame;
+      m_desc.SampleFormat.SampleFormat = DXVA2_SampleProgressiveFrame;
       break;
     case VS_INTERLACEMETHOD_DXVA_BOB:
     case VS_INTERLACEMETHOD_DXVA_HQ:
-      m_SampleFormat = DXVA2_SampleFieldInterleavedEvenFirst;
+      m_desc.SampleFormat.SampleFormat = DXVA2_SampleFieldInterleavedEvenFirst;
       break;
     case VS_INTERLACEMETHOD_DXVA_BOB_INVERTED:
     case VS_INTERLACEMETHOD_DXVA_HQ_INVERTED:
-      m_SampleFormat = DXVA2_SampleFieldInterleavedOddFirst;
+      m_desc.SampleFormat.SampleFormat = DXVA2_SampleFieldInterleavedOddFirst;
       break;
     case VS_INTERLACEMETHOD_AUTO:
 	default:
-      m_SampleFormat = m_StreamSampleFormat;
-      if (m_SampleFormat == DXVA2_SampleFieldInterleavedOddFirst) deint = useautobob ? VS_INTERLACEMETHOD_DXVA_BOB_INVERTED : VS_INTERLACEMETHOD_DXVA_HQ_INVERTED;
-      else if (m_SampleFormat == DXVA2_SampleFieldInterleavedEvenFirst) deint = useautobob? VS_INTERLACEMETHOD_DXVA_BOB : VS_INTERLACEMETHOD_DXVA_HQ;
+      m_desc.SampleFormat.SampleFormat = m_StreamSampleFormat;
+      if (m_desc.SampleFormat.SampleFormat == DXVA2_SampleFieldInterleavedOddFirst) deint = useautobob ? VS_INTERLACEMETHOD_DXVA_BOB_INVERTED : VS_INTERLACEMETHOD_DXVA_HQ_INVERTED;
+      else if (m_desc.SampleFormat.SampleFormat == DXVA2_SampleFieldInterleavedEvenFirst) deint = useautobob? VS_INTERLACEMETHOD_DXVA_BOB : VS_INTERLACEMETHOD_DXVA_HQ;
       else deint = VS_INTERLACEMETHOD_NONE;
       break;
   }
-  m_desc.SampleFormat.SampleFormat = m_SampleFormat;
-  m_BFF = (m_SampleFormat == DXVA2_SampleFieldInterleavedOddFirst ? true : false);
+  m_BFF = (m_desc.SampleFormat.SampleFormat == DXVA2_SampleFieldInterleavedOddFirst ? true : false);
 
   // Find out which processor to use based on render deinterlace method
   GUID device = m_default;
@@ -1189,6 +1189,18 @@ bool CProcessor::SelectProcessor()
   return true;
 }
 
+void CProcessor::StillFrame()
+{
+	CSingleLock lock(m_section);
+
+	IDirect3DSurface9* surface = m_samples[(m_index + m_size - 1) % m_size].SrcSurface;
+
+	// we make sure to present the same frame even if deinterlacing is on
+	for (unsigned i = 0; i < m_size; i++) {
+		m_samples[i].SrcSurface = surface;
+	}
+}
+
 REFERENCE_TIME CProcessor::Add(IDirect3DSurface9* source)
 {
   do {
@@ -1199,7 +1211,7 @@ REFERENCE_TIME CProcessor::Add(IDirect3DSurface9* source)
 	  
 	  m_index = (m_index + 1) % m_size;
   }
-  while (m_samples[m_index].SrcSurface == NULL);  // workaround to present first frame without past or future reference frames
+  while (m_samples[m_index].SrcSurface == NULL);  // workaround to present a frame without past or future reference frames
 
   return m_time;
 }
@@ -1262,7 +1274,7 @@ bool CProcessor::ProcessPicture(DVDVideoPicture* picture)
 	
 	picture->proc = this;
 	picture->proc_id = picture->iFlags & DVP_FLAG_DROPPED ? 0 : Add(surface);
-	
+
 	picture->format = DVDVideoPicture::FMT_DXVA;
 
 	return true;
@@ -1281,37 +1293,34 @@ static DXVA2_Fixed32 ConvertRange(const DXVA2_ValueRange& range, int value, int 
   return range.DefaultValue;
 }
 
-bool CProcessor::Render(const RECT &dst, IDirect3DSurface9* target, REFERENCE_TIME time, int fieldflag)
+bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_TIME time, int fieldflag)
 {
   CSingleLock lock(m_section);
 
   // If deinterlace method or stream interlace format has changed, switch to another DXVA processor
   if (m_CurrInterlaceMethod != g_settings.m_currentVideoSettings.m_InterlaceMethod)
   {
-    CLog::Log(LOGDEBUG,"CProcessor::Render - deinterlace method changed, switching DXVA processor");
-    if (!SelectProcessor()) return false;
+	CLog::Log(LOGDEBUG,"CProcessor::Render - deinterlace method changed, switching DXVA processor");
+	if (!SelectProcessor()) return false;
   }
-  if (m_CurrInterlaceMethod == VS_INTERLACEMETHOD_AUTO && m_SampleFormat != m_StreamSampleFormat)
+  if (m_CurrInterlaceMethod == VS_INTERLACEMETHOD_AUTO && m_desc.SampleFormat.SampleFormat != m_StreamSampleFormat)
   {
-    CLog::Log(LOGDEBUG,"CProcessor::Render - stream interlace format changed, switching DXVA processor");
-    if (!SelectProcessor()) return false;
+	CLog::Log(LOGDEBUG,"CProcessor::Render - stream interlace format changed, switching DXVA processor");
+	if (!SelectProcessor()) return false;
   }
 
-  if (!m_process || !m_samples) return false;
-
-  REFERENCE_TIME frame = time - m_caps.NumForwardRefSamples * 2;
+  if (!m_process || !m_samples || (m_time < time)) return false;
 
   unsigned count = 1 + m_caps.NumBackwardRefSamples + m_caps.NumForwardRefSamples;
 
-  /* find the required samples */
-  unsigned index = m_index;
-  for (unsigned i = 0; i < (m_size - count); i++) {
-	  if (m_samples[index].Time >= frame - m_caps.NumBackwardRefSamples * 2) break;
-	  index = (index + 1) % m_size;
-  }
+  unsigned index = (m_index + m_size - ((m_time - time) >> 1) - count) % m_size;
 
   D3DSURFACE_DESC desc;
   CHECK(target->GetDesc(&desc));
+
+  RECT dst = dest, src = { 0, 0, m_desc.SampleWidth, m_desc.SampleHeight };
+
+  CWinRenderer::CropSource(src, dst, desc);
 
   auto_aptr<DXVA2_VideoSample> samples(new DXVA2_VideoSample[count]);
   for (unsigned i = 0; i < count; i++) {
@@ -1319,22 +1328,19 @@ bool CProcessor::Render(const RECT &dst, IDirect3DSurface9* target, REFERENCE_TI
 	  samples[i].End = m_samples[index].Time + 2;
 	  samples[i].SampleFormat.SampleFormat = m_desc.SampleFormat.SampleFormat;
 	  samples[i].SrcSurface = m_samples[index].SrcSurface;
-	  samples[i].SrcRect.left = 0;
-	  samples[i].SrcRect.right = m_desc.SampleWidth;
-	  samples[i].SrcRect.top = 0;
-	  samples[i].SrcRect.bottom = m_desc.SampleHeight;
+	  samples[i].SrcRect = src;
 	  samples[i].DstRect = dst;
 	  samples[i].PlanarAlpha = DXVA2_Fixed32OpaqueAlpha();
 	  samples[i].SampleData = 0;
-	  CWinRenderer::CropSource(samples[i].SrcRect, samples[i].DstRect, desc);
 	  index = (index + 1) % m_size;
   }
 
   DXVA2_VideoProcessBltParams blt = {};
-  blt.TargetFrame = frame + (m_BFF ? 1 - fieldflag : fieldflag);
-  blt.TargetRect  = dst;
-  blt.ConstrictionSize.cx = 0;
-  blt.ConstrictionSize.cy = 0;
+  blt.TargetFrame = time - m_caps.NumForwardRefSamples * 2 + (m_BFF ? 1 - fieldflag : fieldflag);
+  blt.TargetRect.left = 0;
+  blt.TargetRect.top = 0;
+  blt.TargetRect.right = desc.Width;
+  blt.TargetRect.bottom = desc.Height;
 
   blt.DestFormat.VideoTransferFunction = DXVA2_VideoTransFunc_sRGB;
   blt.DestFormat.SampleFormat          = m_desc.SampleFormat.SampleFormat;

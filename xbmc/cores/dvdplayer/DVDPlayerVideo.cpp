@@ -348,6 +348,9 @@ void CDVDPlayerVideo::Process()
       //Okey, start rendering at stream fps now instead, we are likely in a stillframe
       if( !m_stalled )
       {
+#ifdef HAS_DX
+		m_processor.StillFrame();
+#endif
         if(m_started)
           CLog::Log(LOGINFO, "CDVDPlayerVideo - Stillframe detected, switching to forced %f fps", m_fFrameRate);
         m_stalled = true;
