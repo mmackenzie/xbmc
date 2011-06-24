@@ -33,8 +33,10 @@
 #include "dialogs/GUIDialogYesNo.h"
 #include "settings/Settings.h"
 #include "addons/Skin.h"
+#include "pvr/PVRManager.h"
 
 using namespace std;
+using namespace PVR;
 
 CGUIDialogVideoSettings::CGUIDialogVideoSettings(void)
     : CGUIDialogSettings(WINDOW_DIALOG_VIDEO_OSD_SETTINGS, "VideoOSDSettings.xml")
@@ -90,6 +92,8 @@ void CGUIDialogVideoSettings::CreateSettings()
     entries.push_back(make_pair(VS_INTERLACEMETHOD_VDPAU_TEMPORAL_SPATIAL_HALF, 16318));
     entries.push_back(make_pair(VS_INTERLACEMETHOD_VDPAU_TEMPORAL_HALF        , 16317));
     entries.push_back(make_pair(VS_INTERLACEMETHOD_VDPAU_INVERSE_TELECINE     , 16314));
+    entries.push_back(make_pair(VS_INTERLACEMETHOD_AUTO_ION             , 16320));
+
     entries.push_back(make_pair(VS_INTERLACEMETHOD_DXVA_BOB                   , 16021));
     entries.push_back(make_pair(VS_INTERLACEMETHOD_DXVA_BOB_INVERTED          , 16022));
     entries.push_back(make_pair(VS_INTERLACEMETHOD_DXVA_HQ                    , 16350));
@@ -216,6 +220,9 @@ void CGUIDialogVideoSettings::OnSettingChanged(SettingInfo &setting)
       g_settings.Save();
     }
   }
+
+  if (g_PVRManager.IsPlayingRadio() || g_PVRManager.IsPlayingTV())
+    g_PVRManager.TriggerSaveChannelSettings();
 }
 
 CStdString CGUIDialogVideoSettings::FormatInteger(float value, float minimum)

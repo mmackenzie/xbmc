@@ -37,7 +37,9 @@ enum TIME_FORMAT { TIME_FORMAT_GUESS     =  0,
                    TIME_FORMAT_HH_MM     =  6,
                    TIME_FORMAT_HH_MM_SS  =  7,
                    TIME_FORMAT_XX        =  8, // AM/PM
-                   TIME_FORMAT_HH_MM_XX  = 14};
+                   TIME_FORMAT_HH_MM_XX  = 14,
+                   TIME_FORMAT_H         = 16,
+                   TIME_FORMAT_H_MM_SS   = 19};
 
 class CDateTime;
 
@@ -167,6 +169,8 @@ public:
   void SetFromDBDate(const CStdString &date);
   void SetFromDBTime(const CStdString &time);
   void SetFromW3CDate(const CStdString &date);
+  void SetFromUTCDateTime(const CDateTime &dateTime);
+  void SetFromUTCDateTime(const time_t &dateTime);
 
   /*! \brief set from a database datetime format YYYY-MM-DD HH:MM:SS
    \sa GetAsDBDateTime()

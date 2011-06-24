@@ -71,7 +71,7 @@ float CGUIListItemLayout::Size(ORIENTATION orientation) const
   return (orientation == HORIZONTAL) ? m_width : m_height;
 }
 
-void CGUIListItemLayout::Render(CGUIListItem *item, int parentID, unsigned int time)
+void CGUIListItemLayout::Process(CGUIListItem *item, int parentID, unsigned int currentTime, CDirtyRegionList &dirtyregions)
 {
   if (m_invalidated)
   { // need to update our item
@@ -90,7 +90,12 @@ void CGUIListItemLayout::Render(CGUIListItem *item, int parentID, unsigned int t
   // update visibility, and render
   m_group.SetState(item->IsSelected() || m_isPlaying, m_focused);
   m_group.UpdateVisibility(item);
-  m_group.DoRender(time);
+  m_group.DoProcess(currentTime, dirtyregions);
+}
+
+void CGUIListItemLayout::Render(CGUIListItem *item, int parentID)
+{
+  m_group.DoRender();
 }
 
 void CGUIListItemLayout::SetFocusedItem(unsigned int focus)
@@ -101,6 +106,20 @@ void CGUIListItemLayout::SetFocusedItem(unsigned int focus)
 unsigned int CGUIListItemLayout::GetFocusedItem() const
 {
   return m_group.GetFocusedItem();
+}
+
+void CGUIListItemLayout::SetWidth(float width)
+{
+  m_group.EnlargeWidth(width - m_width);
+  m_width = width;
+  SetInvalid();
+}
+
+void CGUIListItemLayout::SetHeight(float height)
+{
+  m_group.EnlargeHeight(height - m_height);
+  m_height = height;
+  SetInvalid();
 }
 
 void CGUIListItemLayout::SelectItemFromPoint(const CPoint &point)

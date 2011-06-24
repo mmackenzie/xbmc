@@ -25,6 +25,18 @@
 #include "utils/log.h"
 #include "utils/StdString.h"
 #include "utils/JSONVariantParser.h"
+#include "JSONRPC.h"
+#include "PlayerOperations.h"
+#include "AVPlayerOperations.h"
+#include "PicturePlayerOperations.h"
+#include "AVPlaylistOperations.h"
+#include "PlaylistOperations.h"
+#include "FileOperations.h"
+#include "AudioLibrary.h"
+#include "VideoLibrary.h"
+#include "SystemOperations.h"
+#include "InputOperations.h"
+#include "XBMCOperations.h"
 
 using namespace std;
 using namespace JSONRPC;
@@ -61,126 +73,462 @@ unsigned int JSONSchemaTypeDefinition::CJsonSchemaPropertiesMap::size() const
   return m_propertiesmap.size();
 }
 
-CVariant CJSONServiceDescription::m_notifications = CVariant(CVariant::VariantTypeObject);
+std::map<std::string, CVariant> CJSONServiceDescription::m_notifications = std::map<std::string, CVariant>();
 CJSONServiceDescription::CJsonRpcMethodMap CJSONServiceDescription::m_actionMap;
-JsonRpcDescriptionHeader CJSONServiceDescription::m_header;
 std::map<std::string, JSONSchemaTypeDefinition> CJSONServiceDescription::m_types = std::map<std::string, JSONSchemaTypeDefinition>();
-std::vector<JsonRpcMethodMap> CJSONServiceDescription::m_unresolvedMethods = std::vector<JsonRpcMethodMap>();
-bool CJSONServiceDescription::m_newReferenceType = false;
 
-bool CJSONServiceDescription::Parse(JsonRpcMethodMap methodMap[], unsigned int size)
+JsonRpcMethodMap CJSONServiceDescription::m_methodMaps[] = {
+// JSON-RPC
+  { "JSONRPC.Introspect",                           CJSONRPC::Introspect },
+  { "JSONRPC.Version",                              CJSONRPC::Version },
+  { "JSONRPC.Permission",                           CJSONRPC::Permission },
+  { "JSONRPC.Ping",                                 CJSONRPC::Ping },
+  { "JSONRPC.GetNotificationFlags",                 CJSONRPC::GetNotificationFlags },
+  { "JSONRPC.SetNotificationFlags",                 CJSONRPC::SetNotificationFlags },
+  { "JSONRPC.NotifyAll",                            CJSONRPC::NotifyAll },
+
+// Player
+  { "Player.GetActivePlayers",                      CPlayerOperations::GetActivePlayers },
+
+// Music player
+  { "AudioPlayer.State",                            CAVPlayerOperations::State },
+  { "AudioPlayer.PlayPause",                        CAVPlayerOperations::PlayPause },
+  { "AudioPlayer.Stop",                             CAVPlayerOperations::Stop },
+  { "AudioPlayer.SkipPrevious",                     CAVPlayerOperations::SkipPrevious },
+  { "AudioPlayer.SkipNext",                         CAVPlayerOperations::SkipNext },
+
+  { "AudioPlayer.BigSkipBackward",                  CAVPlayerOperations::BigSkipBackward },
+  { "AudioPlayer.BigSkipForward",                   CAVPlayerOperations::BigSkipForward },
+  { "AudioPlayer.SmallSkipBackward",                CAVPlayerOperations::SmallSkipBackward },
+  { "AudioPlayer.SmallSkipForward",                 CAVPlayerOperations::SmallSkipForward },
+
+  { "AudioPlayer.Rewind",                           CAVPlayerOperations::Rewind },
+  { "AudioPlayer.Forward",                          CAVPlayerOperations::Forward },
+
+  { "AudioPlayer.GetTime",                          CAVPlayerOperations::GetTime },
+  { "AudioPlayer.GetPercentage",                    CAVPlayerOperations::GetPercentage },
+  { "AudioPlayer.SeekTime",                         CAVPlayerOperations::SeekTime },
+  { "AudioPlayer.SeekPercentage",                   CAVPlayerOperations::SeekPercentage },
+
+// Video player
+  { "VideoPlayer.State",                            CAVPlayerOperations::State },
+  { "VideoPlayer.PlayPause",                        CAVPlayerOperations::PlayPause },
+  { "VideoPlayer.Stop",                             CAVPlayerOperations::Stop },
+  { "VideoPlayer.SkipPrevious",                     CAVPlayerOperations::SkipPrevious },
+  { "VideoPlayer.SkipNext",                         CAVPlayerOperations::SkipNext },
+
+  { "VideoPlayer.BigSkipBackward",                  CAVPlayerOperations::BigSkipBackward },
+  { "VideoPlayer.BigSkipForward",                   CAVPlayerOperations::BigSkipForward },
+  { "VideoPlayer.SmallSkipBackward",                CAVPlayerOperations::SmallSkipBackward },
+  { "VideoPlayer.SmallSkipForward",                 CAVPlayerOperations::SmallSkipForward },
+
+  { "VideoPlayer.Rewind",                           CAVPlayerOperations::Rewind },
+  { "VideoPlayer.Forward",                          CAVPlayerOperations::Forward },
+
+  { "VideoPlayer.GetTime",                          CAVPlayerOperations::GetTime },
+  { "VideoPlayer.GetPercentage",                    CAVPlayerOperations::GetPercentage },
+  { "VideoPlayer.SeekTime",                         CAVPlayerOperations::SeekTime },
+  { "VideoPlayer.SeekPercentage",                   CAVPlayerOperations::SeekPercentage },
+
+// Picture player
+  { "PicturePlayer.PlayPause",                      CPicturePlayerOperations::PlayPause },
+  { "PicturePlayer.Stop",                           CPicturePlayerOperations::Stop },
+  { "PicturePlayer.SkipPrevious",                   CPicturePlayerOperations::SkipPrevious },
+  { "PicturePlayer.SkipNext",                       CPicturePlayerOperations::SkipNext },
+
+  { "PicturePlayer.MoveLeft",                       CPicturePlayerOperations::MoveLeft },
+  { "PicturePlayer.MoveRight",                      CPicturePlayerOperations::MoveRight },
+  { "PicturePlayer.MoveDown",                       CPicturePlayerOperations::MoveDown },
+  { "PicturePlayer.MoveUp",                         CPicturePlayerOperations::MoveUp },
+
+  { "PicturePlayer.ZoomOut",                        CPicturePlayerOperations::ZoomOut },
+  { "PicturePlayer.ZoomIn",                         CPicturePlayerOperations::ZoomIn },
+  { "PicturePlayer.Zoom",                           CPicturePlayerOperations::Zoom },
+  { "PicturePlayer.Rotate",                         CPicturePlayerOperations::Rotate },
+
+// Video Playlist
+  { "VideoPlaylist.Play",                           CAVPlaylistOperations::Play },
+  { "VideoPlaylist.SkipPrevious",                   CAVPlaylistOperations::SkipPrevious },
+  { "VideoPlaylist.SkipNext",                       CAVPlaylistOperations::SkipNext },
+  { "VideoPlaylist.GetItems",                       CAVPlaylistOperations::GetItems },
+  { "VideoPlaylist.Add",                            CAVPlaylistOperations::Add },
+  { "VideoPlaylist.Insert",                         CAVPlaylistOperations::Insert },
+  { "VideoPlaylist.Clear",                          CAVPlaylistOperations::Clear },
+  { "VideoPlaylist.Shuffle",                        CAVPlaylistOperations::Shuffle },
+  { "VideoPlaylist.UnShuffle",                      CAVPlaylistOperations::UnShuffle },
+  { "VideoPlaylist.Remove",                         CAVPlaylistOperations::Remove },
+
+// AudioPlaylist
+  { "AudioPlaylist.Play",                           CAVPlaylistOperations::Play },
+  { "AudioPlaylist.SkipPrevious",                   CAVPlaylistOperations::SkipPrevious },
+  { "AudioPlaylist.SkipNext",                       CAVPlaylistOperations::SkipNext },
+  { "AudioPlaylist.GetItems",                       CAVPlaylistOperations::GetItems },
+  { "AudioPlaylist.Add",                            CAVPlaylistOperations::Add },
+  { "AudioPlaylist.Insert",                         CAVPlaylistOperations::Insert },
+  { "AudioPlaylist.Clear",                          CAVPlaylistOperations::Clear },
+  { "AudioPlaylist.Shuffle",                        CAVPlaylistOperations::Shuffle },
+  { "AudioPlaylist.UnShuffle",                      CAVPlaylistOperations::UnShuffle },
+  { "AudioPlaylist.Remove",                         CAVPlaylistOperations::Remove },
+
+// Playlist
+  { "Playlist.Create",                              CPlaylistOperations::Create },
+  { "Playlist.Destroy",                             CPlaylistOperations::Destroy },
+
+  { "Playlist.GetItems",                            CPlaylistOperations::GetItems },
+  { "Playlist.Add",                                 CPlaylistOperations::Add },
+  { "Playlist.Remove",                              CPlaylistOperations::Remove },
+  { "Playlist.Swap",                                CPlaylistOperations::Swap },
+  { "Playlist.Clear",                               CPlaylistOperations::Clear },
+  { "Playlist.Shuffle",                             CPlaylistOperations::Shuffle },
+  { "Playlist.UnShuffle",                           CPlaylistOperations::UnShuffle },
+
+// Files
+  { "Files.GetSources",                             CFileOperations::GetRootDirectory },
+  { "Files.Download",                               CFileOperations::Download },
+  { "Files.GetDirectory",                           CFileOperations::GetDirectory },
+
+// Music Library
+  { "AudioLibrary.GetArtists",                      CAudioLibrary::GetArtists },
+  { "AudioLibrary.GetArtistDetails",                CAudioLibrary::GetArtistDetails },
+  { "AudioLibrary.GetAlbums",                       CAudioLibrary::GetAlbums },
+  { "AudioLibrary.GetAlbumDetails",                 CAudioLibrary::GetAlbumDetails },
+  { "AudioLibrary.GetSongs",                        CAudioLibrary::GetSongs },
+  { "AudioLibrary.GetSongDetails",                  CAudioLibrary::GetSongDetails },
+  { "AudioLibrary.GetGenres",                       CAudioLibrary::GetGenres },
+  { "AudioLibrary.ScanForContent",                  CAudioLibrary::ScanForContent },
+
+// Video Library
+  { "VideoLibrary.GetGenres",                       CVideoLibrary::GetGenres },
+  { "VideoLibrary.GetMovies",                       CVideoLibrary::GetMovies },
+  { "VideoLibrary.GetMovieDetails",                 CVideoLibrary::GetMovieDetails },
+  { "VideoLibrary.GetMovieSets",                    CVideoLibrary::GetMovieSets },
+  { "VideoLibrary.GetMovieSetDetails",              CVideoLibrary::GetMovieSetDetails },
+  { "VideoLibrary.GetTVShows",                      CVideoLibrary::GetTVShows },
+  { "VideoLibrary.GetTVShowDetails",                CVideoLibrary::GetTVShowDetails },
+  { "VideoLibrary.GetSeasons",                      CVideoLibrary::GetSeasons },
+  { "VideoLibrary.GetEpisodes",                     CVideoLibrary::GetEpisodes },
+  { "VideoLibrary.GetEpisodeDetails",               CVideoLibrary::GetEpisodeDetails },
+  { "VideoLibrary.GetMusicVideos",                  CVideoLibrary::GetMusicVideos },
+  { "VideoLibrary.GetMusicVideoDetails",            CVideoLibrary::GetMusicVideoDetails },
+  { "VideoLibrary.GetRecentlyAddedMovies",          CVideoLibrary::GetRecentlyAddedMovies },
+  { "VideoLibrary.GetRecentlyAddedEpisodes",        CVideoLibrary::GetRecentlyAddedEpisodes },
+  { "VideoLibrary.GetRecentlyAddedMusicVideos",     CVideoLibrary::GetRecentlyAddedMusicVideos },
+  { "VideoLibrary.ScanForContent",                  CVideoLibrary::ScanForContent },
+
+// System operations
+  { "System.Shutdown",                              CSystemOperations::Shutdown },
+  { "System.Suspend",                               CSystemOperations::Suspend },
+  { "System.Hibernate",                             CSystemOperations::Hibernate },
+  { "System.Reboot",                                CSystemOperations::Reboot },
+  { "System.GetInfoLabels",                         CSystemOperations::GetInfoLabels },
+  { "System.GetInfoBooleans",                       CSystemOperations::GetInfoBooleans },
+
+// Input operations
+  { "Input.Left",                                   CInputOperations::Left },
+  { "Input.Right",                                  CInputOperations::Right },
+  { "Input.Down",                                   CInputOperations::Down },
+  { "Input.Up",                                     CInputOperations::Up },
+  { "Input.Select",                                 CInputOperations::Select },
+  { "Input.Back",                                   CInputOperations::Back },
+  { "Input.Home",                                   CInputOperations::Home },
+
+// XBMC operations
+  { "XBMC.GetVolume",                               CXBMCOperations::GetVolume },
+  { "XBMC.SetVolume",                               CXBMCOperations::SetVolume },
+  { "XBMC.ToggleMute",                              CXBMCOperations::ToggleMute },
+  { "XBMC.Play",                                    CXBMCOperations::Play },
+  { "XBMC.StartSlideshow",                          CXBMCOperations::StartSlideshow },
+  { "XBMC.Log",                                     CXBMCOperations::Log },
+  { "XBMC.Quit",                                    CXBMCOperations::Quit }
+};
+
+bool CJSONServiceDescription::prepareDescription(std::string &description, CVariant &descriptionObject, std::string &name)
 {
-  // Read the json schema for notifications
-  m_notifications = CJSONVariantParser::Parse((const unsigned char *)JSON_NOTIFICATION_DESCRIPTION, strlen(JSON_NOTIFICATION_DESCRIPTION));
-  if (m_notifications.isNull())
-    CLog::Log(LOGERROR, "JSONRPC: Unable to read the json schema notification description");
-
-  // Read the json schema service descriptor and check if it represents
-  // a json object and contains a "services" element for methods
-  CVariant descriptionObject = CJSONVariantParser::Parse((const unsigned char *)JSON_SERVICE_DESCRIPTION, strlen(JSON_SERVICE_DESCRIPTION));
-  if (descriptionObject.isNull())
+  if (description.empty())
   {
-    CLog::Log(LOGERROR, "JSONRPC: Unable to read the json schema service description");
+    CLog::Log(LOGERROR, "JSONRPC: Missing JSON Schema definition for \"%s\"", name.c_str());
     return false;
   }
 
-  // First parse the header
-  parseHeader(descriptionObject);
-
-  // At the beginning all methods are unresolved
-  for (unsigned int index = 0; index < size; index++)
+  if (description.at(0) != '{')
   {
-    m_unresolvedMethods.push_back(methodMap[index]);
+    CStdString json;
+    json.Format("{%s}", description);
+    description = json;
   }
 
-  // As long as there have been new reference types
-  // and there are more bad methods than in the last
-  // try we can try parsing again
-  unsigned int unresolvedMethodCount = m_unresolvedMethods.size() + 1;
-  m_newReferenceType = true;
-  while (m_newReferenceType && m_unresolvedMethods.size() > 0 && m_unresolvedMethods.size() < unresolvedMethodCount)
+  descriptionObject = CJSONVariantParser::Parse((const unsigned char *)description.c_str(), description.size());
+
+  // Make sure the method description actually exists and represents an object
+  if (!descriptionObject.isObject())
   {
-    m_newReferenceType = false;
-    unresolvedMethodCount = m_unresolvedMethods.size();
-    std::vector<JsonRpcMethodMap> stillUnresolvedMethods = std::vector<JsonRpcMethodMap>();
+    CLog::Log(LOGERROR, "JSONRPC: Unable to parse JSON Schema definition for \"%s\"", name.c_str());
+    return false;
+  }
 
-    // Loop through the methods
-    std::vector<JsonRpcMethodMap>::const_iterator iteratorEnd = m_unresolvedMethods.end();
-    for (std::vector<JsonRpcMethodMap>::const_iterator iterator = m_unresolvedMethods.begin(); iterator != iteratorEnd; iterator++)
+  CVariant::const_iterator_map member = descriptionObject.begin_map();
+  if (member != descriptionObject.end_map())
+    name = member->first;
+
+  if (name.empty() || !descriptionObject[name].isMember("type") || !descriptionObject[name]["type"].isString())
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSON Schema definition for \"%s\"", name.c_str());
+    return false;
+  }
+
+  return true;
+}
+
+bool CJSONServiceDescription::addMethod(std::string &jsonMethod, MethodCall method)
+{
+  CVariant descriptionObject;
+  std::string methodName;
+
+  // Make sure the method description actually exists and represents an object
+  if (!prepareDescription(jsonMethod, descriptionObject, methodName))
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSON Schema definition for method \"%s\"", methodName.c_str());
+    return false;
+  }
+
+  if (m_actionMap.find(methodName) != m_actionMap.end())
+  {
+    CLog::Log(LOGERROR, "JSONRPC: There already is a method with the name \"%s\"", methodName.c_str());
+    return false;
+  }
+
+  std::string type = GetString(descriptionObject[methodName]["type"], "");
+  if (type.compare("method") != 0)
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSON type for method \"%s\"", methodName.c_str());
+    return false;
+  }
+
+  if (method == NULL)
+  {
+    unsigned int size = sizeof(m_methodMaps) / sizeof(JsonRpcMethodMap);
+    for (unsigned int index = 0; index < size; index++)
     {
-      // Make sure the method description actually exists and represents an object
-      if (!descriptionObject.isMember((*iterator).name) || !descriptionObject[(*iterator).name].isObject() || 
-          !descriptionObject[(*iterator).name].isMember("type") || !descriptionObject[(*iterator).name]["type"].isString())
+      if (methodName.compare(m_methodMaps[index].name) == 0)
       {
-          CLog::Log(LOGERROR, "JSONRPC: No json schema description for method %s found", (*iterator).name.c_str());
-          continue;
+        method = m_methodMaps[index].method;
+        break;
       }
-
-      std::string type = GetString(descriptionObject[(*iterator).name]["type"], "");
-      if (type.compare("method") != 0)
-      {
-        CLog::Log(LOGERROR, "JSONRPC: No valid json schema description for method %s found", (*iterator).name.c_str());
-          continue;
-      }
-
-      // Parse the details of the method
-      JsonRpcMethod method;
-      method.name = (*iterator).name;
-      method.method = (*iterator).method;
-      if (!parseMethod(descriptionObject[method.name], method))
-      {
-        // If parsing failed add the method to the list of currently bad methods
-        // (might be that a reference for a parameter is missing)
-        stillUnresolvedMethods.push_back((*iterator));
-        CLog::Log(LOGDEBUG, "JSONRPC: Method %s could not be parsed correctly and might be re-parsed later", method.name.c_str());
-        continue;
-      }
-
-      m_actionMap.add(method);
     }
 
-    m_unresolvedMethods = stillUnresolvedMethods;
-  }
-
-  // Parse
-  for (CVariant::const_iterator_map itr = descriptionObject.begin_map(); itr != descriptionObject.end_map(); itr++)
-  {
-    // Make sure the method actually exists and represents an object
-    if (!itr->second.isObject() || !itr->second.isMember("type") || !itr->second["type"].isString())
-      continue;
-
-    std::string type = GetString(itr->second["type"], "");
-    if (type.compare("method") != 0 && itr->second.isMember("id") && itr->second["id"].isString())
+    if (method == NULL)
     {
-      JSONSchemaTypeDefinition globalType;
-      globalType.name = itr->first;
-      parseTypeDefinition(itr->second, globalType, false);
+      CLog::Log(LOGERROR, "JSONRPC: Missing implementation for method \"%s\"", methodName.c_str());
+      return false;
     }
   }
 
-  // Print a log message for every unparseable method
-  std::vector<JsonRpcMethodMap>::const_iterator iteratorEnd = m_unresolvedMethods.end();
-  for (std::vector<JsonRpcMethodMap>::const_iterator iterator = m_unresolvedMethods.begin(); iterator != iteratorEnd; iterator++)
-    CLog::Log(LOGERROR, "JSONRPC: Method %s could not be parsed correctly and will be ignored", (*iterator).name.c_str());
+  // Parse the details of the method
+  JsonRpcMethod newMethod;
+  newMethod.name = methodName;
+  newMethod.method = method;
+  if (!parseMethod(descriptionObject[newMethod.name], newMethod))
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Could not parse method \"%s\"", methodName.c_str());
+    return false;
+  }
+
+  m_actionMap.add(newMethod);
+
+  return true;
+}
+
+bool CJSONServiceDescription::AddType(std::string jsonType)
+{
+  CVariant descriptionObject;
+  std::string typeName;
+
+  if (!prepareDescription(jsonType, descriptionObject, typeName))
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSON Schema definition for type \"%s\"", typeName.c_str());
+    return false;
+  }
+
+  if (m_types.find(typeName) != m_types.end())
+  {
+    CLog::Log(LOGERROR, "JSONRPC: There already is a type with the name \"%s\"", typeName.c_str());
+    return false;
+  }
+
+  // Make sure the "id" attribute is correctly populated
+  descriptionObject[typeName]["id"] = typeName;
+
+  JSONSchemaTypeDefinition globalType;
+  globalType.name = typeName;
+
+  if (!parseTypeDefinition(descriptionObject[typeName], globalType, false))
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Could not parse type \"%s\"", typeName.c_str());
+    return false;
+  }
+
+  return true;
+}
+
+bool CJSONServiceDescription::AddMethod(std::string jsonMethod, MethodCall method)
+{
+  if (method == NULL)
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSONRPC method implementation");
+    return false;
+  }
+
+  return addMethod(jsonMethod, method);
+}
+
+bool CJSONServiceDescription::AddBuiltinMethod(std::string jsonMethod)
+{
+  return addMethod(jsonMethod, NULL);
+}
+
+bool CJSONServiceDescription::AddNotification(std::string jsonNotification)
+{
+  CVariant descriptionObject;
+  std::string notificationName;
+
+  // Make sure the notification description actually exists and represents an object
+  if (!prepareDescription(jsonNotification, descriptionObject, notificationName))
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSON Schema definition for notification \"%s\"", notificationName.c_str());
+    return false;
+  }
+
+  if (m_notifications.find(notificationName) != m_notifications.end())
+  {
+    CLog::Log(LOGERROR, "JSONRPC: There already is a notification with the name \"%s\"", notificationName.c_str());
+    return false;
+  }
+
+  std::string type = GetString(descriptionObject[notificationName]["type"], "");
+  if (type.compare("notification") != 0)
+  {
+    CLog::Log(LOGERROR, "JSONRPC: Invalid JSON type for notification \"%s\"", notificationName.c_str());
+    return false;
+  }
+
+  m_notifications[notificationName] = descriptionObject;
 
   return true;
 }
 
 int CJSONServiceDescription::GetVersion()
 {
-  return m_header.version;
+  return JSONRPC_SERVICE_VERSION;
 }
 
-void CJSONServiceDescription::Print(CVariant &result, ITransportLayer *transport, IClient *client, bool printDescriptions, bool printMetadata, bool filterByTransport)
+JSON_STATUS CJSONServiceDescription::Print(CVariant &result, ITransportLayer *transport, IClient *client,
+  bool printDescriptions /* = true */, bool printMetadata /* = false */, bool filterByTransport /* = true */,
+  std::string filterByName /* = "" */, std::string filterByType /* = "" */, bool printReferences /* = true */)
 {
+  std::map<std::string, JSONSchemaTypeDefinition> types;
+  CJsonRpcMethodMap methods;
+  std::map<std::string, CVariant> notifications;
+
+  int clientPermissions = client->GetPermissionFlags();
+  int transportCapabilities = transport->GetCapabilities();
+
+  if (filterByName.size() > 0)
+  {
+    CStdString name = filterByName;
+
+    if (filterByType == "method")
+    {
+      name = name.ToLower();
+
+      CJsonRpcMethodMap::JsonRpcMethodIterator methodIterator = m_actionMap.find(name);
+      if (methodIterator != m_actionMap.end() &&
+         (clientPermissions & methodIterator->second.permission) != 0 && ((transportCapabilities & methodIterator->second.transportneed) != 0 || !filterByTransport))
+        methods.add(methodIterator->second);
+      else
+        return InvalidParams;
+    }
+    else if (filterByType == "namespace")
+    {
+      // append a . delimiter to make sure we check for a namespace
+      name = name.ToLower().append(".");
+
+      CJsonRpcMethodMap::JsonRpcMethodIterator methodIterator;
+      CJsonRpcMethodMap::JsonRpcMethodIterator methodIteratorEnd = m_actionMap.end();
+      for (methodIterator = m_actionMap.begin(); methodIterator != methodIteratorEnd; methodIterator++)
+      {
+        // Check if the given name is at the very beginning of the method name
+        if (methodIterator->first.find(name) == 0 &&
+           (clientPermissions & methodIterator->second.permission) != 0 && ((transportCapabilities & methodIterator->second.transportneed) != 0 || !filterByTransport))
+          methods.add(methodIterator->second);
+      }
+
+      if (methods.begin() == methods.end())
+        return InvalidParams;
+    }
+    else if (filterByType == "type")
+    {
+      std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIterator = m_types.find(name);
+      if (typeIterator != m_types.end())
+        types[typeIterator->first] = typeIterator->second;
+      else
+        return InvalidParams;
+    }
+    else if (filterByType == "notification")
+    {
+      std::map<std::string, CVariant>::const_iterator notificationIterator = m_notifications.find(name);
+      if (notificationIterator != m_notifications.end())
+        notifications[notificationIterator->first] = notificationIterator->second;
+      else
+        return InvalidParams;
+    }
+    else
+      return InvalidParams;
+
+    // If we need to print all referenced types we have to go through all parameters etc
+    if (printReferences)
+    {
+      std::vector<std::string> referencedTypes;
+
+      // Loop through all printed types to get all referenced types
+      std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIterator;
+      std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIteratorEnd = types.end();
+      for (typeIterator = types.begin(); typeIterator != typeIteratorEnd; typeIterator++)
+        getReferencedTypes(typeIterator->second, referencedTypes);
+
+      // Loop through all printed method's parameters and return value to get all referenced types
+      CJsonRpcMethodMap::JsonRpcMethodIterator methodIterator;
+      CJsonRpcMethodMap::JsonRpcMethodIterator methodIteratorEnd = methods.end();
+      for (methodIterator = methods.begin(); methodIterator != methodIteratorEnd; methodIterator++)
+      {
+        for (unsigned int index = 0; index < methodIterator->second.parameters.size(); index++)
+          getReferencedTypes(methodIterator->second.parameters.at(index), referencedTypes);
+
+        getReferencedTypes(methodIterator->second.returns, referencedTypes);
+      }
+
+      for (unsigned int index = 0; index < referencedTypes.size(); index++)
+      {
+        std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIterator = m_types.find(referencedTypes.at(index));
+        if (typeIterator != m_types.end())
+          types[typeIterator->first] = typeIterator->second;
+      }
+    }
+  }
+  else
+  {
+    types = m_types;
+    methods = m_actionMap;
+    notifications = m_notifications;
+  }
+
   // Print the header
-  result["id"] = m_header.ID;
-  result["version"] = m_header.version;
-  result["description"] = m_header.description;
+  result["id"] = JSONRPC_SERVICE_ID;
+  result["version"] = JSONRPC_SERVICE_VERSION;
+  result["description"] = JSONRPC_SERVICE_DESCRIPTION;
 
   std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIterator;
-  std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIteratorEnd = m_types.end();
-  for (typeIterator = m_types.begin(); typeIterator != typeIteratorEnd; typeIterator++)
+  std::map<std::string, JSONSchemaTypeDefinition>::const_iterator typeIteratorEnd = types.end();
+  for (typeIterator = types.begin(); typeIterator != typeIteratorEnd; typeIterator++)
   {
     CVariant currentType = CVariant(CVariant::VariantTypeObject);
     printType(typeIterator->second, false, true, true, printDescriptions, currentType);
@@ -189,12 +537,9 @@ void CJSONServiceDescription::Print(CVariant &result, ITransportLayer *transport
   }
 
   // Iterate through all json rpc methods
-  int clientPermissions = client->GetPermissionFlags();
-  int transportCapabilities = transport->GetCapabilities();
-
   CJsonRpcMethodMap::JsonRpcMethodIterator methodIterator;
-  CJsonRpcMethodMap::JsonRpcMethodIterator methodIteratorEnd = m_actionMap.end();
-  for (methodIterator = m_actionMap.begin(); methodIterator != methodIteratorEnd; methodIterator++)
+  CJsonRpcMethodMap::JsonRpcMethodIterator methodIteratorEnd = methods.end();
+  for (methodIterator = methods.begin(); methodIterator != methodIteratorEnd; methodIterator++)
   {
     if ((clientPermissions & methodIterator->second.permission) == 0 || ((transportCapabilities & methodIterator->second.transportneed) == 0 && filterByTransport))
       continue;
@@ -217,24 +562,18 @@ void CJSONServiceDescription::Print(CVariant &result, ITransportLayer *transport
       currentMethod["params"].append(param);
     }
 
-    currentMethod["returns"] = methodIterator->second.returns;
+    printType(methodIterator->second.returns, false, false, false, printDescriptions, currentMethod["returns"]);
 
     result["methods"][methodIterator->second.name] = currentMethod;
   }
 
   // Print notification description
-  for (CVariant::const_iterator_map itr = m_notifications.begin_map(); itr != m_notifications.end_map(); itr++)
-  {
-    if (!itr->second.isObject() ||
-        !itr->second.isMember("type") ||
-        !itr->second["type"].isString() ||
-         itr->second["type"] == CVariant("notification"))
-    {
-      continue;
-    }
+  std::map<std::string, CVariant>::const_iterator notificationIterator;
+  std::map<std::string, CVariant>::const_iterator notificationIteratorEnd = notifications.end();
+  for (notificationIterator = notifications.begin(); notificationIterator != notificationIteratorEnd; notificationIterator++)
+    result["notifications"][notificationIterator->first] = notificationIterator->second;
 
-    result["notifications"][itr->first] = itr->second;
-  }
+  return OK;
 }
 
 JSON_STATUS CJSONServiceDescription::CheckCall(const char* const method, const CVariant &requestParameters, IClient *client, bool notification, MethodCall &methodCall, CVariant &outputParameters)
@@ -681,13 +1020,6 @@ JSON_STATUS CJSONServiceDescription::checkType(const CVariant &value, const JSON
   return OK;
 }
 
-void CJSONServiceDescription::parseHeader(const CVariant &descriptionObject)
-{
-  m_header.ID = GetString(descriptionObject["id"], "");
-  m_header.version = (int)descriptionObject["version"].asInteger(0);
-  m_header.description = GetString(descriptionObject["description"], "");
-}
-
 bool CJSONServiceDescription::parseMethod(const CVariant &value, JsonRpcMethod &method)
 {
   // Parse XBMC specific information about the method
@@ -752,7 +1084,7 @@ bool CJSONServiceDescription::parseTypeDefinition(const CVariant &value, JSONSch
     std::map<std::string, JSONSchemaTypeDefinition>::const_iterator iter = m_types.find(refType);
     if (refType.length() <= 0 || iter == m_types.end())
     {
-      CLog::Log(LOGDEBUG, "JSONRPC: JSON schema type %s references an unknown type %s", type.name.c_str(), refType.c_str());
+      CLog::Log(LOGWARNING, "JSONRPC: JSON schema type %s references an unknown type %s", type.name.c_str(), refType.c_str());
       return false;
     }
     
@@ -805,29 +1137,7 @@ bool CJSONServiceDescription::parseTypeDefinition(const CVariant &value, JSONSch
   }
 
   // Get the defined type of the parameter
-  if (value["type"].isArray())
-  {
-    int parsedType = 0;
-    // If the defined type is an array, we have
-    // to handle a union type
-    for (unsigned int typeIndex = 0; typeIndex < value["type"].size(); typeIndex++)
-    {
-      // If the type is a string try to parse it
-      if (value["type"][typeIndex].isString())
-        parsedType |= StringToSchemaValueType(value["type"][typeIndex].asString());
-      else
-        CLog::Log(LOGWARNING, "JSONRPC: Invalid type in union type definition of type %s", type.name.c_str());
-    }
-
-    type.type = (JSONSchemaType)parsedType;
-
-    // If the type has not been set yet
-    // set it to "any"
-    if (type.type == 0)
-      type.type = AnyValue;
-  }
-  else
-    type.type = value["type"].isString() ? StringToSchemaValueType(value["type"].asString()) : AnyValue;
+  type.type = parseJSONSchemaType(value["type"]);
 
   if (type.type == ObjectValue)
   {
@@ -1019,11 +1329,49 @@ bool CJSONServiceDescription::parseTypeDefinition(const CVariant &value, JSONSch
   return true;
 }
 
-void CJSONServiceDescription::parseReturn(const CVariant &value, CVariant &returns)
+void CJSONServiceDescription::parseReturn(const CVariant &value, JSONSchemaTypeDefinition &returns)
 {
   // Only parse the "returns" definition if there is one
-  if (value.isMember("returns"))
-    returns = value["returns"];
+  if (!value.isMember("returns"))
+  {
+    returns.type = NullValue;
+    return;
+  }
+  
+  // If the type of the return value is defined as a simple string we can parse it directly
+  if (value["returns"].isString())
+  {
+    returns.type = parseJSONSchemaType(value["returns"]);
+  }
+  // otherwise we have to parse the whole type definition
+  else
+    parseTypeDefinition(value["returns"], returns, false);
+}
+
+JSONSchemaType CJSONServiceDescription::parseJSONSchemaType(const CVariant &value)
+{
+  if (value.isArray())
+  {
+    int parsedType = 0;
+    // If the defined type is an array, we have
+    // to handle a union type
+    for (unsigned int typeIndex = 0; typeIndex < value.size(); typeIndex++)
+    {
+      // If the type is a string try to parse it
+      if (value[typeIndex].isString())
+        parsedType |= StringToSchemaValueType(value[typeIndex].asString());
+      else
+        CLog::Log(LOGWARNING, "JSONRPC: Invalid type in union type definition");
+    }
+
+    // If the type has not been set yet set it to "any"
+    if (parsedType == 0)
+      return AnyValue;
+
+    return (JSONSchemaType)parsedType;
+  }
+  else
+    return value.isString() ? StringToSchemaValueType(value.asString()) : AnyValue;
 }
 
 void CJSONServiceDescription::addReferenceTypeDefinition(JSONSchemaTypeDefinition &typeDefinition)
@@ -1039,8 +1387,41 @@ void CJSONServiceDescription::addReferenceTypeDefinition(JSONSchemaTypeDefinitio
 
   // Add the type to the list of type definitions
   m_types[typeDefinition.ID] = typeDefinition;
-  if (m_unresolvedMethods.size() > 0)
-    m_newReferenceType = true;
+}
+
+void CJSONServiceDescription::getReferencedTypes(const JSONSchemaTypeDefinition &type, std::vector<std::string> &referencedTypes)
+{
+  // If the current type is a referenceable object, we can add it to the list
+  if (type.ID.size() > 0)
+  {
+    for (unsigned int index = 0; index < referencedTypes.size(); index++)
+    {
+      // The referenceable object has already been added to the list so we can just skip it
+      if (type.ID == referencedTypes.at(index))
+        return;
+    }
+
+    referencedTypes.push_back(type.ID);
+  }
+
+  // If the current type is an object we need to check its properties
+  if (HasType(type.type, ObjectValue))
+  {
+    JSONSchemaTypeDefinition::CJsonSchemaPropertiesMap::JSONSchemaPropertiesIterator iter;
+    JSONSchemaTypeDefinition::CJsonSchemaPropertiesMap::JSONSchemaPropertiesIterator iterEnd = type.properties.end();
+    for (iter = type.properties.begin(); iter != iterEnd; iter++)
+      getReferencedTypes(iter->second, referencedTypes);
+  }
+  // If the current type is an array we need to check its items
+  if (HasType(type.type, ArrayValue))
+  {
+    unsigned int index;
+    for (index = 0; index < type.items.size(); index++)
+      getReferencedTypes(type.items.at(index), referencedTypes);
+
+    for (index = 0; index < type.additionalItems.size(); index++)
+      getReferencedTypes(type.additionalItems.at(index), referencedTypes);
+  }
 }
 
 CJSONServiceDescription::CJsonRpcMethodMap::CJsonRpcMethodMap()
@@ -1048,7 +1429,7 @@ CJSONServiceDescription::CJsonRpcMethodMap::CJsonRpcMethodMap()
   m_actionmap = std::map<std::string, JsonRpcMethod>();
 }
 
-void CJSONServiceDescription::CJsonRpcMethodMap::add(JsonRpcMethod &method)
+void CJSONServiceDescription::CJsonRpcMethodMap::add(const JsonRpcMethod &method)
 {
   CStdString name = method.name;
   name = name.ToLower();

@@ -221,6 +221,23 @@ static const ActionMapping windows[] =
         {"music"                    , WINDOW_MUSIC},
         {"video"                    , WINDOW_VIDEOS},
         {"videos"                   , WINDOW_VIDEO_NAV},
+        {"tv"                       , WINDOW_PVR}, // backward compat
+        {"pvr"                      , WINDOW_PVR},
+
+        {"pvrguideinfo"             , WINDOW_DIALOG_PVR_GUIDE_INFO},
+        {"pvrrecordinginfo"         , WINDOW_DIALOG_PVR_RECORDING_INFO},
+        {"pvrtimersetting"          , WINDOW_DIALOG_PVR_TIMER_SETTING},
+        {"pvrgroupmanager"          , WINDOW_DIALOG_PVR_GROUP_MANAGER},
+        {"pvrchannelmanager"        , WINDOW_DIALOG_PVR_CHANNEL_MANAGER},
+        {"pvrguidesearch"           , WINDOW_DIALOG_PVR_GUIDE_SEARCH},
+        {"pvrchannelscan"           , WINDOW_DIALOG_PVR_CHANNEL_SCAN},
+        {"pvrupdateprogress"        , WINDOW_DIALOG_PVR_UPDATE_PROGRESS},
+        {"pvrosdchannels"           , WINDOW_DIALOG_PVR_OSD_CHANNELS},
+        {"pvrosdguide"              , WINDOW_DIALOG_PVR_OSD_GUIDE},
+        {"pvrosddirector"           , WINDOW_DIALOG_PVR_OSD_DIRECTOR},
+        {"pvrosdcutter"             , WINDOW_DIALOG_PVR_OSD_CUTTER},
+        {"pvrosdteletext"           , WINDOW_DIALOG_OSD_TELETEXT},
+
         {"systeminfo"               , WINDOW_SYSTEM_INFORMATION},
         {"testpattern"              , WINDOW_TEST_PATTERN},
         {"screencalibration"        , WINDOW_SCREEN_CALIBRATION},
@@ -233,6 +250,8 @@ static const ActionMapping windows[] =
         {"videossettings"           , WINDOW_SETTINGS_MYVIDEOS},
         {"networksettings"          , WINDOW_SETTINGS_NETWORK},
         {"appearancesettings"       , WINDOW_SETTINGS_APPEARANCE},
+        {"pvrsettings"              , WINDOW_SETTINGS_MYPVR},
+        {"tvsettings"               , WINDOW_SETTINGS_MYPVR},  // backward compat
         {"scripts"                  , WINDOW_PROGRAMS}, // backward compat
         {"videofiles"               , WINDOW_VIDEO_FILES},
         {"videolibrary"             , WINDOW_VIDEO_NAV},
@@ -245,6 +264,10 @@ static const ActionMapping windows[] =
         {"virtualkeyboard"          , WINDOW_DIALOG_KEYBOARD},
         {"volumebar"                , WINDOW_DIALOG_VOLUME_BAR},
         {"submenu"                  , WINDOW_DIALOG_SUB_MENU},
+        {"pvrosdchannels"           , WINDOW_DIALOG_PVR_OSD_CHANNELS},
+        {"pvrosdguide"              , WINDOW_DIALOG_PVR_OSD_GUIDE},
+        {"pvrosddirector"           , WINDOW_DIALOG_PVR_OSD_DIRECTOR},
+        {"pvrosdcutter"             , WINDOW_DIALOG_PVR_OSD_CUTTER},
         {"favourites"               , WINDOW_DIALOG_FAVOURITES},
         {"contextmenu"              , WINDOW_DIALOG_CONTEXT_MENU},
         {"infodialog"               , WINDOW_DIALOG_KAI_TOAST},
@@ -360,7 +383,7 @@ CButtonTranslator::~CButtonTranslator()
 
 bool CButtonTranslator::Load()
 {
-  translatorMap.clear();
+  deviceMappings.clear();
 
   //directories to search for keymaps
   //they're applied in this order,
@@ -782,13 +805,23 @@ CAction CButtonTranslator::GetAction(int window, const CKey &key, bool fallback)
   return action;
 }
 
-int CButtonTranslator::GetActionCode(int window, const CKey &key, CStdString &strAction)
+const std::map<int, CButtonTranslator::buttonMap> &CButtonTranslator::GetDeviceMap() const
+{
+  std::map<CStdString, std::map<int, buttonMap> >::const_iterator activeMapIt = deviceMappings.find(g_settings.m_activeKeyboardMapping);
+  if (activeMapIt == deviceMappings.end())
+    return deviceMappings.find("default")->second;
+  return activeMapIt->second;
+}
+
+int CButtonTranslator::GetActionCode(int window, const CKey &key, CStdString &strAction) const
 {
   uint32_t code = key.GetButtonCode();
-  map<int, buttonMap>::iterator it = translatorMap.find(window);
-  if (it == translatorMap.end())
+
+  const std::map<int, buttonMap> &deviceMap = GetDeviceMap();
+  map<int, buttonMap>::const_iterator it = deviceMap.find(window);
+  if (it == deviceMap.end())
     return 0;
-  buttonMap::iterator it2 = (*it).second.find(code);
+  buttonMap::const_iterator it2 = (*it).second.find(code);
   int action = 0;
   while (it2 != (*it).second.end())
   {
@@ -802,7 +835,7 @@ int CButtonTranslator::GetActionCode(int window, const CKey &key, CStdString &st
   {
     CLog::Log(LOGDEBUG, "%s: Trying Hardy keycode for %#04x", __FUNCTION__, code);
     code &= ~0x0F00;
-    buttonMap::iterator it2 = (*it).second.find(code);
+    buttonMap::const_iterator it2 = (*it).second.find(code);
     while (it2 != (*it).second.end())
     {
       action = (*it2).second.id;
@@ -844,13 +877,7 @@ void CButtonTranslator::MapWindowActions(TiXmlNode *pWindow, int windowID)
 {
   if (!pWindow || windowID == WINDOW_INVALID) 
     return;
-  buttonMap map;
-  std::map<int, buttonMap>::iterator it = translatorMap.find(windowID);
-  if (it != translatorMap.end())
-  {
-    map = it->second;
-    translatorMap.erase(it);
-  }
+
   TiXmlNode* pDevice;
 
   const char* types[] = {"gamepad", "remote", "universalremote", "keyboard", "mouse", "appcommand", NULL};
@@ -860,7 +887,30 @@ void CButtonTranslator::MapWindowActions(TiXmlNode *pWindow, int windowID)
     if (HasDeviceType(pWindow, type))
     {
       pDevice = pWindow->FirstChild(type);
+      TiXmlElement *pDeviceElement = pDevice->ToElement();
+      CStdString deviceName;
+      //check if exists, if not use "default"
+      deviceName = pDeviceElement->Attribute("name");
+      if (deviceName.empty())
+        deviceName = "default";
+
+      std::map<CStdString, std::map<int, buttonMap> >::iterator deviceMapIt = deviceMappings.find(deviceName);
+      if (deviceMapIt == deviceMappings.end())
+      {
+        //First time encountering this device, lets initialise the buttonMap for it.
+        deviceMapIt = deviceMappings.insert(pair<CStdString, std::map<int, buttonMap> >(deviceName, std::map<int, buttonMap>())).first;
+      }
+      
+      std::map<int, buttonMap>::iterator windowIt = deviceMapIt->second.find(windowID);
+      if (windowIt == deviceMapIt->second.end())
+      {
+        //add it now
+        windowIt = deviceMapIt->second.insert(pair<int, buttonMap>(windowID, buttonMap())).first;
+      }
+      buttonMap& windowMap = windowIt->second;
+
       TiXmlElement *pButton = pDevice->FirstChildElement();
+
       while (pButton)
       {
         uint32_t buttonCode=0;
@@ -878,11 +928,12 @@ void CButtonTranslator::MapWindowActions(TiXmlNode *pWindow, int windowID)
             buttonCode = TranslateAppCommand(pButton->Value());
 
         if (buttonCode && pButton->FirstChild())
-          MapAction(buttonCode, pButton->FirstChild()->Value(), map);
+          MapAction(buttonCode, pButton->FirstChild()->Value(), windowMap);
         pButton = pButton->NextSiblingElement();
       }
     }
   }
+
 #if defined(HAS_SDL_JOYSTICK) || defined(HAS_EVENT_SERVER)
   if ((pDevice = pWindow->FirstChild("joystick")) != NULL)
   {
@@ -894,9 +945,6 @@ void CButtonTranslator::MapWindowActions(TiXmlNode *pWindow, int windowID)
     }
   }
 #endif
-  // add our map to our table
-  if (map.size() > 0)
-    translatorMap.insert(pair<int, buttonMap>( windowID, map));
 }
 
 bool CButtonTranslator::TranslateActionString(const char *szAction, int &action)
@@ -1059,13 +1107,15 @@ uint32_t CButtonTranslator::TranslateRemoteString(const char *szButton)
   else if (strButton.Equals("pageminus")) buttonCode = XINPUT_IR_REMOTE_CHANNEL_MINUS;
   else if (strButton.Equals("mute")) buttonCode = XINPUT_IR_REMOTE_MUTE;
   else if (strButton.Equals("recordedtv")) buttonCode = XINPUT_IR_REMOTE_RECORDED_TV;
-  else if (strButton.Equals("guide")) buttonCode = XINPUT_IR_REMOTE_TITLE;   // same as title
+  else if (strButton.Equals("guide")) buttonCode = XINPUT_IR_REMOTE_GUIDE;
   else if (strButton.Equals("livetv")) buttonCode = XINPUT_IR_REMOTE_LIVE_TV;
   else if (strButton.Equals("star")) buttonCode = XINPUT_IR_REMOTE_STAR;
   else if (strButton.Equals("hash")) buttonCode = XINPUT_IR_REMOTE_HASH;
   else if (strButton.Equals("clear")) buttonCode = XINPUT_IR_REMOTE_CLEAR;
   else if (strButton.Equals("enter")) buttonCode = XINPUT_IR_REMOTE_ENTER;
   else if (strButton.Equals("xbox")) buttonCode = XINPUT_IR_REMOTE_DISPLAY; // same as display
+  else if (strButton.Equals("playlist")) buttonCode = XINPUT_IR_REMOTE_PLAYLIST;
+  else if (strButton.Equals("guide")) buttonCode = XINPUT_IR_REMOTE_GUIDE;
   else if (strButton.Equals("teletext")) buttonCode = XINPUT_IR_REMOTE_TELETEXT;
   else if (strButton.Equals("red")) buttonCode = XINPUT_IR_REMOTE_RED;
   else if (strButton.Equals("green")) buttonCode = XINPUT_IR_REMOTE_GREEN;
@@ -1191,7 +1241,7 @@ uint32_t CButtonTranslator::TranslateMouseCommand(const char *szButton)
 
 void CButtonTranslator::Clear()
 {
-  translatorMap.clear();
+  deviceMappings.clear();
 #if defined(HAS_LIRC) || defined(HAS_IRSERVERSUITE)
   lircRemotesMap.clear();
 #endif
