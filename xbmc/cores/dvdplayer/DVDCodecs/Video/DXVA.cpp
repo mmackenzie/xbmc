@@ -633,8 +633,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   avctx->hwaccel_context = m_context;
 
 #ifdef FF_BUG_DXVA2_ATI
-  D3DADAPTER_IDENTIFIER9 identifier = g_Windowing.GetAIdentifier();
-  if (identifier.VendorId == PCIV_ATI) {
+  if (IsL41LimitedATI()) {
 	  avctx->workaround_bugs |= FF_BUG_DXVA2_ATI;
   }
 #endif

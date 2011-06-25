@@ -284,15 +284,21 @@ void CXBMCRenderManager::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
 
   CSharedLock lock(m_sharedSection);
 
-  if( m_presentmethod == VS_INTERLACEMETHOD_RENDER_WEAVE
-   || m_presentmethod == VS_INTERLACEMETHOD_RENDER_WEAVE_INVERTED)
-    m_pRenderer->RenderUpdate(clear, flags | RENDER_FLAG_BOTH, alpha);
+  if     ( m_presentmethod == VS_INTERLACEMETHOD_RENDER_BOB
+        || m_presentmethod == VS_INTERLACEMETHOD_RENDER_BOB_INVERTED
+        || m_presentmethod == VS_INTERLACEMETHOD_DXVA_BOB
+        || m_presentmethod == VS_INTERLACEMETHOD_DXVA_BOB_INVERTED
+        || m_presentmethod == VS_INTERLACEMETHOD_DXVA_HQ
+        || m_presentmethod == VS_INTERLACEMETHOD_DXVA_HQ_INVERTED)
+    PresentBob(clear, flags, alpha);
+  else if( m_presentmethod == VS_INTERLACEMETHOD_RENDER_WEAVE
+        || m_presentmethod == VS_INTERLACEMETHOD_RENDER_WEAVE_INVERTED)
+    PresentSingle(clear, flags | RENDER_FLAG_BOTH, alpha);
   else
-    m_pRenderer->RenderUpdate(clear, flags | RENDER_FLAG_LAST, alpha);
+    PresentSingle(clear, flags | RENDER_FLAG_LAST, alpha);
 
   m_overlays.Render();
 
-  m_presentstep = PRESENT_IDLE;
   m_presentevent.Set();
 }
 
@@ -589,14 +595,14 @@ void CXBMCRenderManager::Present()
         || m_presentmethod == VS_INTERLACEMETHOD_DXVA_BOB_INVERTED
         || m_presentmethod == VS_INTERLACEMETHOD_DXVA_HQ
         || m_presentmethod == VS_INTERLACEMETHOD_DXVA_HQ_INVERTED)
-    PresentBob();
+    PresentBob(true, 0 , 255);
   else if( m_presentmethod == VS_INTERLACEMETHOD_RENDER_WEAVE
         || m_presentmethod == VS_INTERLACEMETHOD_RENDER_WEAVE_INVERTED)
     PresentWeave();
   else if( m_presentmethod == VS_INTERLACEMETHOD_RENDER_BLEND )
     PresentBlend();
   else
-    PresentSingle();
+    PresentSingle(true, 0 , 255);
 
   m_overlays.Render();
 
@@ -608,35 +614,35 @@ void CXBMCRenderManager::Present()
 }
 
 /* simple present method */
-void CXBMCRenderManager::PresentSingle()
+void CXBMCRenderManager::PresentSingle(bool clear, DWORD flags, DWORD alpha)
 {
   CSingleLock lock(g_graphicsContext);
 
-  m_pRenderer->RenderUpdate(true, 0, 255);
+  m_pRenderer->RenderUpdate(clear, flags, alpha);
   m_presentstep = PRESENT_IDLE;
 }
 
 /* new simpler method of handling interlaced material, *
  * we just render the two fields right after eachother */
-void CXBMCRenderManager::PresentBob()
+void CXBMCRenderManager::PresentBob(bool clear, DWORD flags, DWORD alpha)
 {
   CSingleLock lock(g_graphicsContext);
 
   if(m_presentstep == PRESENT_FRAME)
   {
     if( m_presentfield == FS_BOT)
-      m_pRenderer->RenderUpdate(true, RENDER_FLAG_BOT, 255);
+      m_pRenderer->RenderUpdate(clear, flags | RENDER_FLAG_BOT, alpha);
     else
-      m_pRenderer->RenderUpdate(true, RENDER_FLAG_TOP, 255);
+      m_pRenderer->RenderUpdate(clear, flags | RENDER_FLAG_TOP, alpha);
     m_presentstep = PRESENT_FRAME2;
     g_application.NewFrame();
   }
   else
   {
     if( m_presentfield == FS_TOP)
-      m_pRenderer->RenderUpdate(true, RENDER_FLAG_BOT, 255);
+      m_pRenderer->RenderUpdate(clear, flags | RENDER_FLAG_BOT, alpha);
     else
-      m_pRenderer->RenderUpdate(true, RENDER_FLAG_TOP, 255);
+      m_pRenderer->RenderUpdate(clear, flags | RENDER_FLAG_TOP, alpha);
     m_presentstep = PRESENT_IDLE;
   }
 }
