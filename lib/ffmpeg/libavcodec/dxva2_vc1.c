@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+//PictureParameters corrections by TheSpecialist.
+
 #include "dxva2_internal.h"
 #include "vc1.h"
 #include "vc1data.h"
@@ -42,11 +44,11 @@ static void fill_picture_parameters(AVCodecContext *avctx,
     memset(pp, 0, sizeof(*pp));
     pp->wDecodedPictureIndex    =
     pp->wDeblockedPictureIndex  = ff_dxva2_get_surface_index(ctx, current_picture);
-    if (s->pict_type != FF_I_TYPE)
+    if (s->pict_type != FF_I_TYPE && v->bi_type == 0)
         pp->wForwardRefPictureIndex = ff_dxva2_get_surface_index(ctx, &s->last_picture);
     else
         pp->wForwardRefPictureIndex = 0xffff;
-    if (s->pict_type == FF_B_TYPE)
+    if (s->pict_type == FF_B_TYPE && v->bi_type == 0)
         pp->wBackwardRefPictureIndex = ff_dxva2_get_surface_index(ctx, &s->next_picture);
     else
         pp->wBackwardRefPictureIndex = 0xffff;
@@ -69,8 +71,8 @@ static void fill_picture_parameters(AVCodecContext *avctx,
     if (s->picture_structure & PICT_BOTTOM_FIELD)
         pp->bPicStructure      |= 0x02;
     pp->bSecondField            = v->interlace && v->fcm != 0x03 && !s->first_field;
-    pp->bPicIntra               = s->pict_type == FF_I_TYPE;
-    pp->bPicBackwardPrediction  = s->pict_type == FF_B_TYPE;
+    pp->bPicIntra				= (s->pict_type == FF_I_TYPE || v->bi_type == 1);
+    pp->bPicBackwardPrediction	= (s->pict_type == FF_B_TYPE && v->bi_type == 0);
     pp->bBidirectionalAveragingMode = (1                                           << 7) |
                                       ((ctx->cfg->ConfigIntraResidUnsigned != 0)   << 6) |
                                       ((ctx->cfg->ConfigResidDiffAccelerator != 0) << 5) |
@@ -101,14 +103,17 @@ static void fill_picture_parameters(AVCodecContext *avctx,
                                   (v->rangered       << 3) |
                                   (s->max_b_frames       );
     pp->bPicExtrapolation       = (!v->interlace || v->fcm == 0x00) ? 1 : 2;
-    pp->bPicDeblocked           = ((v->profile != PROFILE_ADVANCED && v->rangeredfrm) << 5) |
-                                  (s->loop_filter                                     << 1);
+	pp->bPicDeblocked           = ((v->profile == PROFILE_ADVANCED && v->overlap == 1 &&	
+									pp->bPicBackwardPrediction == 0 && 
+									ctx->cfg->ConfigResidDiffHost == 0)					<< 6) |
+									((v->profile != PROFILE_ADVANCED && v->rangeredfrm) << 5) |
+									(s->loop_filter                                     << 1);
     pp->bPicDeblockConfined     = (v->postprocflag             << 7) |
                                   (v->broadcast                << 6) |
                                   (v->interlace                << 5) |
                                   (v->tfcntrflag               << 4) |
                                   (v->finterpflag              << 3) |
-                                  ((s->pict_type != FF_B_TYPE) << 2) |
+                                  ((s->pict_type != FF_B_TYPE) << 2) |   //includes BI
                                   (v->psf                      << 1) |
                                   (v->extended_dmv                 );
     if (s->pict_type != FF_I_TYPE)
