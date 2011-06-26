@@ -65,8 +65,9 @@ protected:
   IDirectXVideoDecoderService* m_service;
   GUID                         m_input;
   DXVA2_VideoDesc              m_format;
-
+  
   LPDIRECT3DSURFACE9*          m_surfaces;
+
   unsigned                     m_read;
   unsigned                     m_write;
 
@@ -91,6 +92,7 @@ public:
   bool           Open(UINT width, UINT height);
   bool           Open(UINT width, UINT height, D3DFORMAT format);
   bool           CreateSurfaces();
+  bool           LockSurfaces(LPDIRECT3DSURFACE9* surfaces, unsigned count);
   void           Close();
 
   void           SetStreamSampleFormat(unsigned sformat) { m_StreamSampleFormat = sformat; };
@@ -98,10 +100,8 @@ public:
   unsigned       GetSize() { return m_size; }
 
   void           StillFrame();
-
-  bool           Render(const RECT& dest, IDirect3DSurface9* target, const REFERENCE_TIME time, int fieldflag);
-
   bool           ProcessPicture(DVDVideoPicture* picture);
+  bool           Render(const RECT& dest, IDirect3DSurface9* target, const REFERENCE_TIME time, int fieldflag);
 
   CProcessor* Acquire();
   long        Release();
@@ -142,6 +142,7 @@ protected:
   long              m_references;
 
   LPDIRECT3DSURFACE9* m_surfaces;
+  unsigned m_count;
 
   struct VideoSample {
 	  REFERENCE_TIME Time;
