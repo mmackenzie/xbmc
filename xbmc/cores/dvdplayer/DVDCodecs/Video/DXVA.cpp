@@ -164,6 +164,7 @@ static const dxva2_deinterlacetech_t dxva2_deinterlacetechs[] = {
 // List of PCI Device ID of ATI cards with UVD or UVD+ decoding block.
 static DWORD UVDDeviceID [] = {
   0x95C0, // ATI Radeon HD 3400 Series (and others)
+  0x95C4, // ATI Radeon HD 3400 Series (and others)
   0x95C5, // ATI Radeon HD 3400 Series (and others)
   0x94C3, // ATI Radeon HD 3410
   0x9589, // ATI Radeon HD 3600 Series (and others)
