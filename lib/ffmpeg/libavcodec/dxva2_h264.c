@@ -152,9 +152,9 @@ static void fill_picture_parameters(struct dxva_context *ctx, const H264Context 
 
 static void fill_scaling_lists(AVCodecContext *avctx, const H264Context *h, DXVA_Qmatrix_H264 *qm)
 {
-    unsigned i, j;
     memset(qm, 0, sizeof(*qm));
-	if (avctx->workaround_bugs & FF_BUG_DXVA2_ATI) {  // Only for ATI cards
+	if (avctx->workaround_bugs & FF_BUG_DXVA2_SCALING_LIST_ZIGZAG) {  // For old UVD/UVD+ ATI cards
+		unsigned i, j;
 		for (i = 0; i < 6; i++)
 			for (j = 0; j < 16; j++)
 				qm->bScalingLists4x4[i][j] = h->pps.scaling_matrix4[i][j];
@@ -162,8 +162,8 @@ static void fill_scaling_lists(AVCodecContext *avctx, const H264Context *h, DXVA
 		for (i = 0; i < 2; i++)
 			for (j = 0; j < 64; j++)
 				qm->bScalingLists8x8[i][j] = h->pps.scaling_matrix8[i][j];
-	}
-	else {
+	} else {
+		unsigned i, j;
 		for (i = 0; i < 6; i++)
 			for (j = 0; j < 16; j++) 
 				qm->bScalingLists4x4[i][j] = h->pps.scaling_matrix4[i][zigzag_scan[j]];
