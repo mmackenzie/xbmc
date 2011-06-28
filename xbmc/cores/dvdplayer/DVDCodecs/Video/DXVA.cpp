@@ -164,6 +164,7 @@ static const dxva2_deinterlacetech_t dxva2_deinterlacetechs[] = {
 // List of PCI Device ID of ATI cards with UVD or UVD+ decoding block.
 static DWORD UVDDeviceID [] = {
   0x95C0, // ATI Radeon HD 3400 Series (and others)
+  0x95C4, // ATI Radeon HD 3400 Series (and others)
   0x95C5, // ATI Radeon HD 3400 Series (and others)
   0x94C3, // ATI Radeon HD 3410
   0x9589, // ATI Radeon HD 3600 Series (and others)
@@ -290,15 +291,15 @@ void CDecoder::Close()
   SAFE_RELEASE(m_context->decoder);
   SAFE_RELEASE(m_service);
 
-  if (m_surfaces) {
-	  free(m_surfaces);
-	  m_surfaces = NULL;
-  }
-
   if (m_context->surface) {
-	  for (unsigned i = 0; i < m_context->surface_count; i++) SAFE_RELEASE(m_context->surface[i]);
 	  free(m_context->surface);
 	  m_context->surface = NULL;
+  }
+
+  if (m_surfaces) {
+	  for (unsigned i = 0; i < m_context->surface_count; i++) SAFE_RELEASE(m_surfaces[i]);
+	  free(m_surfaces);
+	  m_surfaces = NULL;
   }
 }
 
@@ -558,18 +559,16 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   CLog::Log(LOGDEBUG, "DXVA - source requires %d references", avctx->refs);
 
   unsigned count = 0;
-  if (g_processor) {
-	  // we always must have called Create in CProcessor just before creating a CDecoder instance
-	  if (!g_processor->Open(m_format.SampleWidth, m_format.SampleHeight, m_format.Format))
-		  return false;
-	  count = g_processor->GetSize();
-  }
+  // we always must have called Create in CProcessor just before creating a CDecoder instance
+  if (!g_processor->Open(m_format.SampleWidth, m_format.SampleHeight, m_format.Format))
+	  return false;
+  count = g_processor->GetSize();
 
   m_context->surface_count = m_refs + 1 + 1 + count; // refs + 1 decode + 1 libavcodec safety + processor buffer
   
   CLog::Log(LOGDEBUG, "DXVA - allocating %d surfaces", m_context->surface_count);
   
-  m_context->surface = (LPDIRECT3DSURFACE9*)calloc(m_context->surface_count, sizeof(LPDIRECT3DSURFACE9));
+  m_surfaces = (LPDIRECT3DSURFACE9*)calloc(m_context->surface_count, sizeof(LPDIRECT3DSURFACE9));
   CHECK(m_service->CreateSurface( (m_format.SampleWidth + 15) & ~15
                                   , (m_format.SampleHeight + 15) & ~15
                                   , m_context->surface_count - 1
@@ -577,11 +576,13 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
                                   , D3DPOOL_DEFAULT
                                   , 0
                                   , DXVA2_VideoDecoderRenderTarget
-                                  , m_context->surface, NULL ));
+                                  , m_surfaces, NULL ));
 
-  m_surfaces = (LPDIRECT3DSURFACE9*)calloc(m_context->surface_count, sizeof(LPDIRECT3DSURFACE9));
+  g_processor->LockSurfaces(m_surfaces, m_context->surface_count);
+
+  m_context->surface = (LPDIRECT3DSURFACE9*)calloc(m_context->surface_count, sizeof(LPDIRECT3DSURFACE9));
   for (unsigned i = 0; i < m_context->surface_count; i++) {
-	  m_surfaces[i] = m_context->surface[i];
+	  m_context->surface[i] = m_surfaces[i];
   }
 
   // find what decode configs are available
@@ -883,7 +884,7 @@ void CProcessor::Close()
   }
   
   if (m_surfaces) {
-	  for (unsigned i = 0; i < m_size; i++) SAFE_RELEASE(m_surfaces[i]);
+	  for (unsigned i = 0; i < m_count; i++) SAFE_RELEASE(m_surfaces[i]);
 	  free(m_surfaces);
 	  m_surfaces = NULL;
   }
@@ -1083,17 +1084,34 @@ bool CProcessor::CreateSurfaces()
 {
   CSingleLock lock(m_section);
 
-  m_surfaces = (LPDIRECT3DSURFACE9*)calloc(m_size, sizeof(LPDIRECT3DSURFACE9));
+  m_count = m_size;
+
+  m_surfaces = (LPDIRECT3DSURFACE9*)calloc(m_count, sizeof(LPDIRECT3DSURFACE9));
   CHECK(m_service->CreateSurface(
 			(m_desc.SampleWidth + 15) & ~15,
 			(m_desc.SampleHeight + 15) & ~15,
-			m_size - 1,
+			m_count - 1,
 			m_desc.Format,
 			D3DPOOL_DEFAULT,
 			0,
 			DXVA2_VideoSoftwareRenderTarget,
 			m_surfaces,
 			NULL));
+
+  return true;
+}
+
+bool CProcessor::LockSurfaces(LPDIRECT3DSURFACE9* surfaces, unsigned count)
+{
+  CSingleLock lock(m_section);
+
+  m_count = count;
+
+  m_surfaces = (LPDIRECT3DSURFACE9*)calloc(m_count, sizeof(LPDIRECT3DSURFACE9));
+  for (unsigned i = 0; i < m_count; i++) {
+	  m_surfaces[i] = surfaces[i];
+	  m_surfaces[i]->AddRef();
+  }
 
   return true;
 }
@@ -1230,8 +1248,6 @@ bool CProcessor::ProcessPicture(DVDVideoPicture* picture)
 
 		case DVDVideoPicture::FMT_YUV420P:
 			{
-				if (!m_surfaces) return false;
-
 				surface = m_surfaces[m_index];
 	
 				D3DLOCKED_RECT rectangle;
