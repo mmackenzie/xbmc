@@ -1413,22 +1413,22 @@ typedef struct AVCodecContext {
      * - decoding: Set by user
      */
     int workaround_bugs;
-#define FF_BUG_AUTODETECT                1  ///< autodetection
-#define FF_BUG_OLD_MSMPEG4               2
-#define FF_BUG_XVID_ILACE                4
-#define FF_BUG_UMP4                      8
-#define FF_BUG_NO_PADDING                16
-#define FF_BUG_AMV                       32
-#define FF_BUG_AC_VLC                    0  ///< Will be removed, libavcodec can now handle these non-compliant files by default.
-#define FF_BUG_QPEL_CHROMA               64
-#define FF_BUG_STD_QPEL                  128
-#define FF_BUG_QPEL_CHROMA2              256
-#define FF_BUG_DIRECT_BLOCKSIZE          512
-#define FF_BUG_EDGE                      1024
-#define FF_BUG_HPEL_CHROMA               2048
-#define FF_BUG_DC_CLIP                   4096
-#define FF_BUG_MS                        8192 ///< Work around various bugs in Microsoft's broken decoders.
-#define FF_BUG_TRUNCATED                 16384
+#define FF_BUG_AUTODETECT       1  ///< autodetection
+#define FF_BUG_OLD_MSMPEG4      2
+#define FF_BUG_XVID_ILACE       4
+#define FF_BUG_UMP4             8
+#define FF_BUG_NO_PADDING       16
+#define FF_BUG_AMV              32
+#define FF_BUG_AC_VLC           0  ///< Will be removed, libavcodec can now handle these non-compliant files by default.
+#define FF_BUG_QPEL_CHROMA      64
+#define FF_BUG_STD_QPEL         128
+#define FF_BUG_QPEL_CHROMA2     256
+#define FF_BUG_DIRECT_BLOCKSIZE 512
+#define FF_BUG_EDGE             1024
+#define FF_BUG_HPEL_CHROMA      2048
+#define FF_BUG_DC_CLIP          4096
+#define FF_BUG_MS               8192 ///< Work around various bugs in Microsoft's broken decoders.
+#define FF_BUG_TRUNCATED       16384
 #define FF_BUG_DXVA2_SCALING_LIST_ZIGZAG 32768 ///< Work around for DXVA2 and old UVD/UVD+ ATI video cards
 //#define FF_BUG_FAKE_SCALABILITY 16 //Autodetection should work 100%.
 
