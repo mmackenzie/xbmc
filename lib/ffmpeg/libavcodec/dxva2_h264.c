@@ -150,7 +150,7 @@ static void fill_picture_parameters(struct dxva_context *ctx, const H264Context 
     //pp->SliceGroupMap[810];               /* XXX not implemented by FFmpeg */
 }
 
-static void fill_scaling_lists(const H264Context *h, DXVA_Qmatrix_H264 *qm)
+static void fill_scaling_lists(AVCodecContext *avctx, const H264Context *h, DXVA_Qmatrix_H264 *qm)
 {
     unsigned i, j;
     memset(qm, 0, sizeof(*qm));
@@ -380,7 +380,7 @@ static int start_frame(AVCodecContext *avctx,
     fill_picture_parameters(ctx, h, &ctx_pic->pp);
 
     /* Fill up DXVA_Qmatrix_H264 */
-    fill_scaling_lists(h, &ctx_pic->qm);
+    fill_scaling_lists(avctx, h, &ctx_pic->qm);
 
     ctx_pic->slice_count    = 0;
     ctx_pic->bitstream_size = 0;
