@@ -579,6 +579,11 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   avctx->release_buffer  = RelBufferS;
   avctx->hwaccel_context = m_context;
 
+#ifdef FF_BUG_DXVA2_SCALING_LIST_ZIGZAG
+  if (IsL41LimitedATI())
+    avctx->workaround_bugs |= FF_BUG_DXVA2_SCALING_LIST_ZIGZAG;
+#endif
+
   return true;
 }
 
