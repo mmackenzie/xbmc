@@ -1340,7 +1340,7 @@ bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_T
   for (unsigned i = 0; i < count; i++) {
 	  samples[i].Start = m_samples[index].Time;
 	  samples[i].End = m_samples[index].Time + 2;
-	  samples[i].SampleFormat.SampleFormat = m_desc.SampleFormat.SampleFormat;
+	  samples[i].SampleFormat = m_desc.SampleFormat;
 	  samples[i].SrcSurface = m_samples[index].SrcSurface;
 	  samples[i].SrcRect = src;
 	  samples[i].DstRect = dst;
@@ -1351,8 +1351,6 @@ bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_T
 
   DXVA2_VideoProcessBltParams blt = {};
   blt.TargetFrame = time - m_caps.NumForwardRefSamples * 2 + (m_BFF ? 1 - fieldflag : fieldflag);
-  blt.TargetRect.left = 0;
-  blt.TargetRect.top = 0;
   blt.TargetRect.right = desc.Width;
   blt.TargetRect.bottom = desc.Height;
 
