@@ -637,7 +637,7 @@ bool CDecoder::Open(AVCodecContext *avctx, enum PixelFormat fmt)
   if (IsL41LimitedATI())
   {
 #ifdef FF_DXVA2_WORKAROUND_SCALING_LIST_ZIGZAG
-    m_context->workaround |= FF_DXVA2_WORKAROUND_SCALING_LIST_ZIGZAG;
+    m_context->workaround |= FF_BUG_DXVA2_SCALING_LIST_ZIGZAG;
 #else
     CLog::Log(LOGWARNING, "DXVA - video card with different scaling list zigzag order detected, but no support in libavcodec");
 #endif
@@ -802,13 +802,22 @@ void CDecoder::RelBuffer(AVCodecContext *avctx, AVFrame *pic)
   CSingleLock lock(m_section);
 
   if (m_level > 0) {
-	  m_surfaces[m_write] = (IDirect3DSurface9*)pic->data[3];
-	  m_write = (m_write + 1) % m_context->surface_count;
+      IDirect3DSurface9* surface = (IDirect3DSurface9*)pic->data[3];
 
-	  m_level--;
+      for (unsigned i = m_read; i != m_write; i = (i + 1) % m_context->surface_count) {
+          if (m_surfaces[i] == surface) {
+              CLog::Log(LOGWARNING, "DXVA - trying to release an already released surface");
+              return;
+          }
+      }
 
-	  for(unsigned i = 0; i < 4; i++)
-		pic->data[i] = NULL;
+      m_surfaces[m_write] = surface;
+      m_write = (m_write + 1) % m_context->surface_count;
+
+      m_level--;
+
+      for(unsigned i = 0; i < 4; i++)
+        pic->data[i] = NULL;
   }
 }
 
@@ -886,6 +895,7 @@ void CProcessor::Close()
   SAFE_RELEASE(m_service);
 
   if (m_samples) {
+      for (unsigned i = 0; i < m_size; i++) SAFE_RELEASE(m_samples[i].SrcSurface);
 	  free(m_samples);
 	  m_samples = NULL;
   }
@@ -1073,10 +1083,6 @@ bool CProcessor::Open(UINT width, UINT height, D3DFORMAT format)
   m_size = m_size + 3;  // safety frames
 
   m_samples = (VideoSample*)calloc(m_size, sizeof(VideoSample));
-  for (unsigned i = 0; i < m_size; i++) {
-	  m_samples[i].Time = 0;
-	  m_samples[i].SrcSurface = NULL;
-  }
 
   m_time = 0;
 
@@ -1229,9 +1235,12 @@ REFERENCE_TIME CProcessor::Add(IDirect3DSurface9* source)
 {
   do {
 	  m_time += 2;
-	  
+      
+      SAFE_RELEASE(m_samples[m_index].SrcSurface);
+
 	  m_samples[m_index].Time = m_time;
 	  m_samples[m_index].SrcSurface = source;
+      m_samples[m_index].SrcSurface->AddRef();
 	  
 	  m_index = (m_index + 1) % m_size;
   }
@@ -1331,7 +1340,15 @@ bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_T
 	if (!SelectProcessor()) return false;
   }
 
-  if (!m_process || !m_samples || (m_time < time)) return false;
+  if (!m_process || !m_samples) {
+      CLog::Log(LOGWARNING, "CProcessor::Render - processor not properly set up, skipping frame");
+      return false;
+  }
+
+  if ((time > m_time) || (m_time - time >= (m_size - m_caps.NumBackwardRefSamples - m_caps.NumForwardRefSamples) * 2)) {
+      CLog::Log(LOGDEBUG, "CProcessor::Render - Samples required to render frame %d not present in sample buffer, skipping frame", time);
+      return false;
+  }
 
   unsigned count = 1 + m_caps.NumBackwardRefSamples + m_caps.NumForwardRefSamples;
 
@@ -1348,7 +1365,7 @@ bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_T
   for (unsigned i = 0; i < count; i++) {
 	  samples[i].Start = m_samples[index].Time;
 	  samples[i].End = m_samples[index].Time + 2;
-	  samples[i].SampleFormat.SampleFormat = m_desc.SampleFormat.SampleFormat;
+	  samples[i].SampleFormat = m_desc.SampleFormat;
 	  samples[i].SrcSurface = m_samples[index].SrcSurface;
 	  samples[i].SrcRect = src;
 	  samples[i].DstRect = dst;
@@ -1359,8 +1376,6 @@ bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_T
 
   DXVA2_VideoProcessBltParams blt = {};
   blt.TargetFrame = time - m_caps.NumForwardRefSamples * 2 + (m_BFF ? 1 - fieldflag : fieldflag);
-  blt.TargetRect.left = 0;
-  blt.TargetRect.top = 0;
   blt.TargetRect.right = desc.Width;
   blt.TargetRect.bottom = desc.Height;
 
