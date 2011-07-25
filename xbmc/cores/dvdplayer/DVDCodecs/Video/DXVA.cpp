@@ -1106,6 +1106,8 @@ bool CProcessor::CreateSurfaces()
 			DXVA2_VideoSoftwareRenderTarget,
 			m_surfaces,
 			NULL));
+  for (unsigned i = 0; i < m_count; i++)
+	  m_surfaces[i]->AddRef();
 
   return true;
 }
@@ -1223,7 +1225,9 @@ void CProcessor::StillFrame()
 
 	// we make sure to present the same frame even if deinterlacing is on
 	for (unsigned i = 0; i < m_size; i++) {
+        SAFE_RELEASE(m_samples[i].SrcSurface);
 		m_samples[i].SrcSurface = surface;
+        surface->AddRef();
 	}
 }
 
@@ -1231,12 +1235,12 @@ REFERENCE_TIME CProcessor::Add(IDirect3DSurface9* source)
 {
   do {
 	  m_time += 2;
-      
-      SAFE_RELEASE(m_samples[m_index].SrcSurface);
 
 	  m_samples[m_index].Time = m_time;
+
+      SAFE_RELEASE(m_samples[m_index].SrcSurface);
 	  m_samples[m_index].SrcSurface = source;
-      m_samples[m_index].SrcSurface->AddRef();
+      source->AddRef();
 	  
 	  m_index = (m_index + 1) % m_size;
   }
@@ -1376,7 +1380,7 @@ bool CProcessor::Render(const RECT &dest, IDirect3DSurface9* target, REFERENCE_T
   blt.TargetRect.bottom = desc.Height;
 
   blt.DestFormat.VideoTransferFunction = DXVA2_VideoTransFunc_sRGB;
-  blt.DestFormat.SampleFormat          = m_desc.SampleFormat.SampleFormat;
+  blt.DestFormat.SampleFormat          = DXVA2_SampleProgressiveFrame;
   blt.DestFormat.NominalRange          = DXVA2_NominalRange_0_255;
   blt.Alpha = DXVA2_Fixed32OpaqueAlpha();
 
