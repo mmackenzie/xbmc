@@ -267,6 +267,8 @@ void CWinRenderer::AddProcessor(DVDVideoPicture* picture)
     if (CONF_FLAGS_FORMAT_MASK(m_flags) == CONF_FLAGS_FORMAT_DXVA)
       processor = picture->proc;
 
+    processor->SetStreamSampleFormat(picture->iFlags & DVP_FLAG_INTERLACED ? (picture->iFlags & DVP_FLAG_TOP_FIELD_FIRST ? DXVA2_SampleFieldInterleavedEvenFirst : DXVA2_SampleFieldInterleavedOddFirst) : DXVA2_SampleProgressiveFrame);
+
     processor->ProcessPicture(picture);
 
     DXVABuffer *buf = (DXVABuffer*)m_VideoBuffers[source];
@@ -921,7 +923,7 @@ void CWinRenderer::RenderProcessor(DWORD flags)
     return;
   }
 
-  image->proc->Render(rect, target, image->id);
+  image->proc->Render(rect, target, image->id, flags == RENDER_FLAG_BOT ? 1 : 0);
 
   target->Release();
 }
@@ -1007,9 +1009,14 @@ bool CWinRenderer::CreateYV12Texture(int index)
 
 bool CWinRenderer::Supports(EINTERLACEMETHOD method)
 {
-  if(CONF_FLAGS_FORMAT_MASK(m_flags) == CONF_FLAGS_FORMAT_DXVA)
+  if (m_renderMethod == RENDER_DXVA)
   {
-    if(method == VS_INTERLACEMETHOD_NONE)
+    if(method == VS_INTERLACEMETHOD_NONE
+    || method == VS_INTERLACEMETHOD_DXVA_BOB
+    || method == VS_INTERLACEMETHOD_DXVA_BOB_INVERTED
+    || method == VS_INTERLACEMETHOD_DXVA_HQ
+    || method == VS_INTERLACEMETHOD_DXVA_HQ_INVERTED
+    || method == VS_INTERLACEMETHOD_AUTO)
       return true;
     return false;
   }
